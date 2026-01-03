@@ -71,7 +71,7 @@ class StreamingChunkResponse(BaseModel):
     """Streaming-Chunk für Echtzeit-Updates."""
     type: Literal["streaming_chunk"] = "streaming_chunk"
     session_id: str
-    agent: Literal["a", "b"]
+    agent: Literal["a", "b", "evaluator"]
     agent_name: str
     chunk: str
     is_final: bool = False
@@ -88,7 +88,7 @@ class TypingResponse(BaseModel):
     """Typing Indicator."""
     type: Literal["typing"] = "typing"
     session_id: str
-    agent: Literal["a", "b"]
+    agent: Literal["a", "b", "evaluator"]
     agent_name: str
 
 
