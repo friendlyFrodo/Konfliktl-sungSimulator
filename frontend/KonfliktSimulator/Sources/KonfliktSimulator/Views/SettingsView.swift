@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Settings View für App-Einstellungen
 struct SettingsView: View {
-    @AppStorage("serverURL") private var serverURL = "ws://localhost:8000/ws"
+    @AppStorage("serverURL") private var serverURL = "ws://localhost:8080/ws"
     @State private var testConnectionStatus: ConnectionStatus = .idle
 
     enum ConnectionStatus {

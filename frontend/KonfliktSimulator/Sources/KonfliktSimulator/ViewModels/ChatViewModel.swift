@@ -32,8 +32,8 @@ class ChatViewModel: ObservableObject {
 
     // MARK: - Initialization
 
-    init(webSocketService: WebSocketService = WebSocketService()) {
-        self.webSocketService = webSocketService
+    init() {
+        self.webSocketService = WebSocketService()
         setupMessageHandler()
         setupBindings()
     }
@@ -123,7 +123,9 @@ class ChatViewModel: ObservableObject {
 
     private func setupMessageHandler() {
         webSocketService.onMessage { [weak self] message in
-            self?.handleServerMessage(message)
+            Task { @MainActor in
+                self?.handleServerMessage(message)
+            }
         }
     }
 

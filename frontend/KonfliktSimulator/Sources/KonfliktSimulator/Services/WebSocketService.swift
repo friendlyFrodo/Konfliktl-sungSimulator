@@ -2,12 +2,11 @@ import Foundation
 import Combine
 
 /// WebSocket Service für Echtzeit-Kommunikation mit dem Backend
-@MainActor
 class WebSocketService: NSObject, ObservableObject {
     // MARK: - Published Properties
 
-    @Published var isConnected = false
-    @Published var connectionError: String?
+    @MainActor @Published var isConnected = false
+    @MainActor @Published var connectionError: String?
 
     // MARK: - Private Properties
 
@@ -15,7 +14,7 @@ class WebSocketService: NSObject, ObservableObject {
     private var urlSession: URLSession!
     private let serverURL: URL
 
-    private var messageHandler: ((ServerMessage) -> Void)?
+    private var messageHandler: (@Sendable (ServerMessage) -> Void)?
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
 
@@ -31,7 +30,13 @@ class WebSocketService: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    init(serverURL: URL = URL(string: "ws://localhost:8000/ws")!) {
+    override init() {
+        self.serverURL = URL(string: "ws://localhost:8080/ws")!
+        super.init()
+        self.urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+    }
+
+    init(serverURL: URL) {
         self.serverURL = serverURL
         super.init()
         self.urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
@@ -46,8 +51,10 @@ class WebSocketService: NSObject, ObservableObject {
         webSocketTask = urlSession.webSocketTask(with: serverURL)
         webSocketTask?.resume()
 
-        isConnected = true
-        connectionError = nil
+        Task { @MainActor in
+            isConnected = true
+            connectionError = nil
+        }
         reconnectAttempts = 0
 
         receiveMessage()
@@ -57,11 +64,13 @@ class WebSocketService: NSObject, ObservableObject {
     func disconnect() {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
-        isConnected = false
+        Task { @MainActor in
+            isConnected = false
+        }
     }
 
     /// Message Handler setzen
-    func onMessage(_ handler: @escaping (ServerMessage) -> Void) {
+    func onMessage(_ handler: @escaping @Sendable (ServerMessage) -> Void) {
         self.messageHandler = handler
     }
 
@@ -117,7 +126,9 @@ class WebSocketService: NSObject, ObservableObject {
 
     private func sendJSON<T: Encodable>(_ object: T) {
         guard let webSocketTask = webSocketTask else {
-            connectionError = "Not connected"
+            Task { @MainActor in
+                connectionError = "Not connected"
+            }
             return
         }
 
@@ -132,7 +143,9 @@ class WebSocketService: NSObject, ObservableObject {
                 }
             }
         } catch {
-            connectionError = "Encoding error: \(error.localizedDescription)"
+            Task { @MainActor in
+                connectionError = "Encoding error: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -146,9 +159,7 @@ class WebSocketService: NSObject, ObservableObject {
                 self.receiveMessage() // Continue receiving
 
             case .failure(let error):
-                Task { @MainActor in
-                    self.handleError(error)
-                }
+                self.handleError(error)
             }
         }
     }
@@ -167,9 +178,7 @@ class WebSocketService: NSObject, ObservableObject {
 
         do {
             let serverMessage = try decoder.decode(ServerMessage.self, from: data)
-            Task { @MainActor in
-                self.messageHandler?(serverMessage)
-            }
+            messageHandler?(serverMessage)
         } catch {
             print("Decoding error: \(error)")
             // Try to extract error message from raw JSON
@@ -183,8 +192,10 @@ class WebSocketService: NSObject, ObservableObject {
     }
 
     private func handleError(_ error: Error) {
-        isConnected = false
-        connectionError = error.localizedDescription
+        Task { @MainActor in
+            isConnected = false
+            connectionError = error.localizedDescription
+        }
 
         // Auto-reconnect
         if reconnectAttempts < maxReconnectAttempts {
@@ -193,10 +204,8 @@ class WebSocketService: NSObject, ObservableObject {
 
             Task {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                await MainActor.run {
-                    self.webSocketTask = nil
-                    self.connect()
-                }
+                self.webSocketTask = nil
+                self.connect()
             }
         }
     }
@@ -205,7 +214,7 @@ class WebSocketService: NSObject, ObservableObject {
 // MARK: - URLSessionWebSocketDelegate
 
 extension WebSocketService: URLSessionWebSocketDelegate {
-    nonisolated func urlSession(
+    func urlSession(
         _ session: URLSession,
         webSocketTask: URLSessionWebSocketTask,
         didOpenWithProtocol protocol: String?
@@ -216,7 +225,7 @@ extension WebSocketService: URLSessionWebSocketDelegate {
         }
     }
 
-    nonisolated func urlSession(
+    func urlSession(
         _ session: URLSession,
         webSocketTask: URLSessionWebSocketTask,
         didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
