@@ -10,6 +10,29 @@ class ScenarioService: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
 
+    /// Custom DateFormatter für Backend-Datumsformat (ohne Timezone)
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
+    /// Decoder mit custom date strategy
+    private var decoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            if let date = Self.dateFormatter.date(from: dateString) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
+        }
+        return decoder
+    }
+
     private init() {}
 
     // MARK: - Public Methods
@@ -32,14 +55,11 @@ class ScenarioService: ObservableObject {
                 throw ScenarioError.serverError
             }
 
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
             let listResponse = try decoder.decode(ScenarioListResponse.self, from: data)
             scenarios = listResponse.scenarios
 
         } catch {
             self.error = error.localizedDescription
-            print("Fehler beim Laden der Szenarien: \(error)")
         }
 
         isLoading = false
@@ -67,8 +87,6 @@ class ScenarioService: ObservableObject {
                 throw ScenarioError.serverError
             }
 
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
             let newScenario = try decoder.decode(Scenario.self, from: data)
 
             // Zur Liste hinzufügen
@@ -105,8 +123,6 @@ class ScenarioService: ObservableObject {
                 throw ScenarioError.serverError
             }
 
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
             let updatedScenario = try decoder.decode(Scenario.self, from: data)
 
             // In der Liste aktualisieren

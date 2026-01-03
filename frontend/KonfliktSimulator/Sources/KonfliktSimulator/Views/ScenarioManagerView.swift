@@ -2,7 +2,7 @@ import SwiftUI
 
 /// View zur Verwaltung von Szenarien (Erstellen, Bearbeiten, Löschen)
 struct ScenarioManagerView: View {
-    @StateObject private var scenarioService = ScenarioService.shared
+    @ObservedObject private var scenarioService = ScenarioService.shared
     @State private var showingCreateSheet = false
     @State private var scenarioToEdit: Scenario?
     @State private var showingDeleteConfirmation = false
@@ -39,6 +39,7 @@ struct ScenarioManagerView: View {
                 }
             }
         }
+        .frame(minWidth: 400, minHeight: 400)
         .navigationTitle("Szenarien verwalten")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

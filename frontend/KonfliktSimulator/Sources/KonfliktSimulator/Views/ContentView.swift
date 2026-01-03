@@ -23,14 +23,14 @@ Stefan versteht nicht, warum Maria so reagiert - er wollte doch nur Initiative z
     @State private var userRole: String = "agent_a"
 
     // UI State
-    @State private var showingNewSessionSheet = true
+    @State private var showingNewSessionSheet = false
     @State private var showingSettings = false
 
     var body: some View {
         NavigationSplitView {
             // Sidebar
             SidebarView(
-                isConnected: chatViewModel.webSocketService.isConnected,
+                isConnected: chatViewModel.isConnected,
                 onNewSession: { showingNewSessionSheet = true },
                 onSettings: { showingSettings = true }
             )
@@ -84,10 +84,6 @@ Stefan versteht nicht, warum Maria so reagiert - er wollte doch nur Initiative z
             scenario: scenarioText.isEmpty ? nil : scenarioText,
             userRole: selectedMode == .participant ? userRole : nil
         )
-    }
-
-    private var webSocketService: WebSocketService {
-        chatViewModel.webSocketService
     }
 }
 
@@ -166,7 +162,7 @@ struct NewSessionSheet: View {
     let onCancel: () -> Void
 
     // Szenarien aus der Datenbank
-    @StateObject private var scenarioService = ScenarioService.shared
+    @ObservedObject private var scenarioService = ScenarioService.shared
 
     var body: some View {
         NavigationStack {

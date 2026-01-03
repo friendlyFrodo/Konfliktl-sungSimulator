@@ -26,6 +26,9 @@ class ChatViewModel: ObservableObject {
     @Published var agentAName: String = "Agent A"
     @Published var agentBName: String = "Agent B"
 
+    // Connection status (forwarded from WebSocketService)
+    @Published var isConnected: Bool = false
+
     // MARK: - Services
 
     let webSocketService: WebSocketService
@@ -168,6 +171,15 @@ class ChatViewModel: ObservableObject {
     }
 
     private func setupBindings() {
+        // Forward connection status
+        webSocketService.$isConnected
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] connected in
+                self?.isConnected = connected
+            }
+            .store(in: &cancellables)
+
+        // Forward connection errors
         webSocketService.$connectionError
             .compactMap { $0 }
             .sink { [weak self] error in
