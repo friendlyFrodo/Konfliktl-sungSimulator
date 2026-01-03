@@ -15,11 +15,25 @@ Der **Konflikt-Simulator** ist eine macOS App für KI-gestützte Konfliktsimulat
    - WebSocket-Protokoll
    - LangGraph State Machine Details
    - Modell-Konfiguration
+   - Implementierte Features (Logging, Interrupt, etc.)
 
-2. **`DESIGN.md` aktualisieren bei**:
-   - Neuen Features
-   - Architektur-Änderungen
-   - Bug-Fixes die das Design betreffen
+### DESIGN.md MUSS live gehalten werden!
+
+**Bei jedem Code-Commit:**
+
+| Änderungstyp | DESIGN.md aktualisieren |
+|--------------|-------------------------|
+| Neues Feature | Abschnitt 10 (Implementierte Features) |
+| Neue WebSocket-Nachricht | Abschnitt 4 (Protokoll) |
+| Architektur-Änderung | Entsprechendes Diagramm |
+| Bug-Fix mit Design-Impact | Dokumentieren |
+
+**Workflow:**
+```
+1. Code implementieren
+2. DESIGN.md aktualisieren
+3. Beides im gleichen Commit!
+```
 
 ## Repository-Struktur
 

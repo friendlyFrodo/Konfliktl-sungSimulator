@@ -1,7 +1,9 @@
 """FastAPI Server für den Konflikt-Simulator."""
 
 import os
+import sys
 import uuid
+import logging
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -15,25 +17,54 @@ from .db.database import init_db
 # Environment laden
 load_dotenv()
 
+# Logging konfigurieren
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+
+# Log-Level für spezifische Module
+logging.getLogger("konflikt").setLevel(logging.DEBUG)
+logging.getLogger("konflikt.graph").setLevel(logging.DEBUG)
+logging.getLogger("konflikt.router").setLevel(logging.DEBUG)
+logging.getLogger("konflikt.websocket").setLevel(logging.DEBUG)
+
+# Externe Bibliotheken leiser stellen
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("anthropic").setLevel(logging.INFO)
+
+logger = logging.getLogger("konflikt.main")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup/Shutdown Events."""
     # Startup
-    print("Konflikt-Simulator Backend startet...")
+    logger.info("=" * 60)
+    logger.info("Konflikt-Simulator Backend startet...")
+    logger.info("=" * 60)
 
     # Datenbank initialisieren
     await init_db()
-    print("Datenbank initialisiert.")
+    logger.info("Datenbank initialisiert.")
 
     # API Key prüfen
     if not os.getenv("ANTHROPIC_API_KEY"):
-        print("WARNUNG: ANTHROPIC_API_KEY nicht gesetzt!")
+        logger.warning("ANTHROPIC_API_KEY nicht gesetzt!")
+    else:
+        logger.info("API Key konfiguriert.")
+
+    logger.info("Server bereit auf Port 8080")
 
     yield
 
     # Shutdown
-    print("Konflikt-Simulator Backend beendet.")
+    logger.info("Konflikt-Simulator Backend beendet.")
 
 
 app = FastAPI(
@@ -79,19 +110,32 @@ async def websocket_endpoint(websocket: WebSocket):
     """WebSocket Endpoint für Echtzeit-Kommunikation."""
     client_id = str(uuid.uuid4())
     await manager.connect(websocket, client_id)
+    logger.info(f"🔌 Client {client_id[:8]} verbunden")
 
     try:
         while True:
-            # Auf Nachricht warten
-            data = await websocket.receive_json()
-            await handle_websocket_message(websocket, client_id, data)
+            # Auf Nachricht warten - handle both text and bytes
+            message = await websocket.receive()
+
+            if "text" in message:
+                import json
+                data = json.loads(message["text"])
+                await handle_websocket_message(websocket, client_id, data)
+            elif "bytes" in message:
+                import json
+                data = json.loads(message["bytes"].decode())
+                await handle_websocket_message(websocket, client_id, data)
+            elif message.get("type") == "websocket.disconnect":
+                break
 
     except WebSocketDisconnect:
         manager.disconnect(client_id)
-        print(f"Client {client_id} disconnected")
+        logger.info(f"🔌 Client {client_id[:8]} getrennt")
 
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        import traceback
+        logger.error(f"WebSocket Fehler: {e}")
+        traceback.print_exc()
         manager.disconnect(client_id)
 
 

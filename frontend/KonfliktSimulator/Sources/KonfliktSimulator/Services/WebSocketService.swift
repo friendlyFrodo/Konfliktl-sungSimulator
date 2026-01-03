@@ -31,15 +31,23 @@ class WebSocketService: NSObject, ObservableObject {
     // MARK: - Initialization
 
     override init() {
-        self.serverURL = URL(string: "ws://localhost:8080/ws")!
+        // Use 127.0.0.1 instead of localhost to avoid IPv6 resolution issues
+        self.serverURL = URL(string: "ws://127.0.0.1:8080/ws")!
         super.init()
-        self.urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+
+        // Configure session for local development (allows insecure connections)
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        self.urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }
 
     init(serverURL: URL) {
         self.serverURL = serverURL
         super.init()
-        self.urlSession = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+
+        let config = URLSessionConfiguration.default
+        config.waitsForConnectivity = true
+        self.urlSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }
 
     // MARK: - Public Methods
@@ -119,6 +127,12 @@ class WebSocketService: NSObject, ObservableObject {
     /// Evaluierung anfordern
     func requestEvaluation(sessionId: String) {
         let request = ClientMessage.EvaluationRequest(sessionId: sessionId)
+        sendJSON(request)
+    }
+
+    /// Session sofort unterbrechen (User greift ein)
+    func interruptSession(sessionId: String) {
+        let request = ClientMessage.InterruptRequest(sessionId: sessionId)
         sendJSON(request)
     }
 

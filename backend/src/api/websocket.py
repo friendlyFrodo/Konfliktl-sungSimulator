@@ -1,6 +1,7 @@
 """WebSocket Handler für Echtzeit-Kommunikation."""
 
 import json
+import logging
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Optional
@@ -13,13 +14,19 @@ from ..models.schemas import (
     ContinueMessage,
     StopMessage,
     RequestEvaluationMessage,
+    InterruptMessage,
     AgentMessageResponse,
     StreamingChunkResponse,
     WaitingForInputResponse,
     TypingResponse,
     SessionStartedResponse,
     ErrorResponse,
+    InterruptedResponse,
 )
+
+# Logging
+logger = logging.getLogger("konflikt.websocket")
+logger.setLevel(logging.DEBUG)
 
 
 class ConnectionManager:
@@ -59,6 +66,7 @@ async def handle_websocket_message(
 ):
     """Verarbeitet eingehende WebSocket-Nachrichten."""
     msg_type = message.get("type")
+    logger.info(f"[{client_id[:8]}] 📥 Empfangen: {msg_type}")
 
     try:
         if msg_type == "start_session":
@@ -76,12 +84,17 @@ async def handle_websocket_message(
         elif msg_type == "request_evaluation":
             await handle_request_evaluation(websocket, client_id, message)
 
+        elif msg_type == "interrupt":
+            await handle_interrupt(websocket, client_id, message)
+
         else:
+            logger.warning(f"[{client_id[:8]}] ⚠️ Unbekannter Nachrichtentyp: {msg_type}")
             await websocket.send_json(
                 ErrorResponse(message=f"Unknown message type: {msg_type}").model_dump()
             )
 
     except Exception as e:
+        logger.error(f"[{client_id[:8]}] ❌ Fehler: {e}")
         await websocket.send_json(
             ErrorResponse(message=str(e)).model_dump()
         )
@@ -224,19 +237,57 @@ async def handle_request_evaluation(
         )
 
 
+async def handle_interrupt(
+    websocket: WebSocket,
+    client_id: str,
+    message: dict,
+):
+    """Unterbricht eine laufende Session sofort (User greift ein)."""
+    try:
+        msg = InterruptMessage(**message)
+        logger.info(f"[{client_id[:8]}] 🛑 Interrupt für Session {msg.session_id[:8]}")
+
+        success = simulator.interrupt_session(msg.session_id)
+        if not success:
+            await websocket.send_json(
+                ErrorResponse(message="Session not found").model_dump()
+            )
+            return
+
+        # Bestätigung senden
+        await websocket.send_json(
+            InterruptedResponse(session_id=msg.session_id).model_dump()
+        )
+
+        # Waiting for Input Status
+        await websocket.send_json({
+            "type": "waiting_for_input",
+            "session_id": msg.session_id,
+            "expected_role": "mediator",
+        })
+
+    except Exception as e:
+        logger.error(f"[{client_id[:8]}] ❌ Interrupt-Fehler: {e}")
+        await websocket.send_json(
+            ErrorResponse(message=f"Failed to interrupt: {str(e)}").model_dump()
+        )
+
+
 async def send_event(websocket: WebSocket, session_id: str, event: dict):
     """Sendet ein Event an den Client."""
     event_type = event.get("type")
 
     if event_type == "agent_message":
-        response = AgentMessageResponse(
-            session_id=session_id,
-            agent=event["agent"],
-            agent_name=event["agent_name"],
-            content=event["content"],
-            timestamp=datetime.now(),
-        )
-        await websocket.send_json(response.model_dump(mode="json"))
+        # Format timestamp as ISO8601 with Z suffix for Swift compatibility
+        timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        await websocket.send_json({
+            "type": "agent_message",
+            "session_id": session_id,
+            "agent": event["agent"],
+            "agent_name": event["agent_name"],
+            "content": event["content"],
+            "timestamp": timestamp,
+        })
 
     elif event_type == "streaming_chunk":
         response = StreamingChunkResponse(

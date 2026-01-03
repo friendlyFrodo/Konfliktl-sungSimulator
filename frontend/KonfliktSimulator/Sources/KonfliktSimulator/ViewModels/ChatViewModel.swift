@@ -112,6 +112,16 @@ class ChatViewModel: ObservableObject {
         webSocketService.stopSession(sessionId: sessionId)
     }
 
+    /// In die Situation eingreifen (unterbricht Streaming sofort)
+    func intervene() {
+        guard let sessionId = currentSessionId else { return }
+        // Streaming sofort stoppen
+        streamingMessage = nil
+        typingAgent = nil
+        typingAgentName = nil
+        webSocketService.interruptSession(sessionId: sessionId)
+    }
+
     /// Session fortsetzen
     func continueSession() {
         guard let sessionId = currentSessionId else { return }
@@ -187,6 +197,7 @@ class ChatViewModel: ObservableObject {
             )
             messages.append(finalMessage)
             streamingMessage = nil
+            print("📨 Added message from \(response.agentName), total messages: \(messages.count)")
 
         case .waitingForInput(let response):
             isWaitingForInput = true
@@ -207,6 +218,15 @@ class ChatViewModel: ObservableObject {
             )
             messages.append(evalMessage)
             isSessionActive = false
+
+        case .interrupted(let response):
+            // User hat eingegriffen - Streaming/Typing stoppen
+            streamingMessage = nil
+            typingAgent = nil
+            typingAgentName = nil
+            isWaitingForInput = true
+            expectedRole = "mediator"
+            print("🛑 Session unterbrochen: \(response.message)")
 
         case .error(let response):
             errorMessage = response.message

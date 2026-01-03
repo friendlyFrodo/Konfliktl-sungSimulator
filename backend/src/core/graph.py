@@ -1,6 +1,7 @@
 """LangGraph State Machine für die Konfliktsimulation."""
 
 import uuid
+import logging
 from typing import AsyncIterator, Optional
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
@@ -17,6 +18,10 @@ from .agents import (
 )
 from .router import route_next_speaker, should_continue, determine_expected_role, smart_route_next_speaker
 
+# Logging konfigurieren
+logger = logging.getLogger("konflikt.graph")
+logger.setLevel(logging.DEBUG)
+
 
 class ConflictSimulator:
     """Orchestriert die Konfliktsimulation mit LangGraph."""
@@ -25,6 +30,8 @@ class ConflictSimulator:
         self.memory = MemorySaver()
         self.graph = self._build_graph()
         self.sessions: dict[str, SimulationState] = {}
+        # Interrupt-Flags für aktive Streams
+        self._interrupt_flags: dict[str, bool] = {}
 
     def _build_graph(self) -> StateGraph:
         """Baut den LangGraph Graphen."""
@@ -101,12 +108,17 @@ class ConflictSimulator:
         """
         session_id = str(uuid.uuid4())
 
-        initial_messages = []
+        # Initiale Nachrichten - mindestens eine HumanMessage für die Claude API
         if scenario:
-            # Szenario als System-Kontext
-            initial_messages.append(
-                HumanMessage(content=f"[SZENARIO: {scenario}]", name="system")
-            )
+            # Szenario als Kontext für den Konflikt
+            initial_messages = [
+                HumanMessage(content=f"[SZENARIO: {scenario}]\n\nBitte beginne das Gespräch.", name="system")
+            ]
+        else:
+            # Default: einfacher Start-Prompt
+            initial_messages = [
+                HumanMessage(content="Bitte beginne das Gespräch. Du bist in einem Konflikt mit der anderen Person.", name="system")
+            ]
 
         initial_state: SimulationState = {
             "messages": initial_messages,
@@ -184,6 +196,47 @@ class ConflictSimulator:
                 "expected_role": determine_expected_role(state),
             }
 
+    def interrupt_session(self, session_id: str) -> bool:
+        """Unterbricht eine laufende Session sofort.
+
+        Args:
+            session_id: Session ID
+
+        Returns:
+            True bei Erfolg
+        """
+        if session_id in self.sessions:
+            self._interrupt_flags[session_id] = True
+            self.sessions[session_id]["should_stop"] = True
+            logger.info(f"[{session_id[:8]}] 🛑 Interrupt-Signal gesetzt")
+            return True
+        return False
+
+    def _clean_agent_response(self, content: str, agent_name: str) -> str:
+        """Bereinigt die Agent-Antwort und entfernt doppelte Namen.
+
+        Das Modell antwortet manchmal mit "Name: Text" oder nur mit "Name:",
+        was zu leeren oder doppelten Namen führt.
+        """
+        content = content.strip()
+
+        # Entferne führenden Namen wenn vorhanden (mit verschiedenen Varianten)
+        prefixes_to_remove = [
+            f"{agent_name}:",
+            f"{agent_name.lower()}:",
+            f"{agent_name.upper()}:",
+            f"**{agent_name}**:",
+            f"*{agent_name}*:",
+        ]
+
+        for prefix in prefixes_to_remove:
+            if content.lower().startswith(prefix.lower()):
+                content = content[len(prefix):].strip()
+                logger.debug(f"Entfernt Präfix '{prefix}' von Antwort")
+                break
+
+        return content
+
     async def run_with_streaming(
         self,
         session_id: str,
@@ -194,43 +247,75 @@ class ConflictSimulator:
             Streaming-Events während der Ausführung
         """
         if session_id not in self.sessions:
+            logger.error(f"[{session_id[:8]}] Session nicht gefunden")
             yield {"type": "error", "message": "Session not found"}
             return
+
+        # Interrupt-Flag initialisieren
+        self._interrupt_flags[session_id] = False
 
         state = self.sessions[session_id]
         next_speaker = state.get("next_speaker", "agent_a")
 
+        logger.info(f"[{session_id[:8]}] ▶️ Streaming gestartet, nächster Sprecher: {next_speaker}")
+
         while next_speaker not in ["human", "evaluator", "end"]:
+            # Prüfe Interrupt
+            if self._interrupt_flags.get(session_id, False):
+                logger.info(f"[{session_id[:8]}] 🛑 Interrupt erkannt, breche ab")
+                next_speaker = "evaluator"
+                break
+
             if state.get("should_stop"):
+                logger.info(f"[{session_id[:8]}] should_stop=True, wechsle zu Evaluator")
                 next_speaker = "evaluator"
                 break
 
             # Typing-Indikator
             if next_speaker == "agent_a":
+                agent_name = state["agent_a_config"]["name"]
+                logger.info(f"[{session_id[:8]}] 💬 Agent A ({agent_name}) beginnt...")
                 yield {
                     "type": "typing",
                     "agent": "a",
-                    "agent_name": state["agent_a_config"]["name"],
+                    "agent_name": agent_name,
                 }
 
-                # Streaming
+                # Streaming mit Interrupt-Prüfung
                 full_content = ""
+                chunk_count = 0
                 async for chunk, is_final in agent_a_node_streaming(state):
+                    # Interrupt-Check während Streaming
+                    if self._interrupt_flags.get(session_id, False):
+                        logger.info(f"[{session_id[:8]}] 🛑 Streaming unterbrochen für Agent A")
+                        break
+
                     if is_final:
                         full_content = chunk
                     else:
+                        chunk_count += 1
                         yield {
                             "type": "streaming_chunk",
                             "agent": "a",
-                            "agent_name": state["agent_a_config"]["name"],
+                            "agent_name": agent_name,
                             "chunk": chunk,
                             "is_final": False,
                         }
 
+                # Bereinige Antwort
+                cleaned_content = self._clean_agent_response(full_content, agent_name)
+
+                logger.info(f"[{session_id[:8]}] ✅ Agent A fertig: {chunk_count} Chunks, {len(cleaned_content)} Zeichen")
+                logger.debug(f"[{session_id[:8]}] 📝 Agent A RAW: {full_content[:200]}...")
+                logger.debug(f"[{session_id[:8]}] 📝 Agent A CLEANED: {cleaned_content[:200]}...")
+
+                # Validierung: Leere Antwort?
+                if not cleaned_content:
+                    logger.warning(f"[{session_id[:8]}] ⚠️ Leere Antwort von Agent A!")
+
                 # Finale Nachricht
-                agent_name = state["agent_a_config"]["name"]
                 state["messages"].append(
-                    AIMessage(content=f"{agent_name}: {full_content}", name="agent_a")
+                    AIMessage(content=f"{agent_name}: {cleaned_content}", name="agent_a")
                 )
                 state["turns"] += 1
 
@@ -238,32 +323,50 @@ class ConflictSimulator:
                     "type": "agent_message",
                     "agent": "a",
                     "agent_name": agent_name,
-                    "content": f"{agent_name}: {full_content}",
+                    "content": cleaned_content,
                 }
 
             elif next_speaker == "agent_b":
+                agent_name = state["agent_b_config"]["name"]
+                logger.info(f"[{session_id[:8]}] 💬 Agent B ({agent_name}) beginnt...")
                 yield {
                     "type": "typing",
                     "agent": "b",
-                    "agent_name": state["agent_b_config"]["name"],
+                    "agent_name": agent_name,
                 }
 
                 full_content = ""
+                chunk_count = 0
                 async for chunk, is_final in agent_b_node_streaming(state):
+                    # Interrupt-Check
+                    if self._interrupt_flags.get(session_id, False):
+                        logger.info(f"[{session_id[:8]}] 🛑 Streaming unterbrochen für Agent B")
+                        break
+
                     if is_final:
                         full_content = chunk
                     else:
+                        chunk_count += 1
                         yield {
                             "type": "streaming_chunk",
                             "agent": "b",
-                            "agent_name": state["agent_b_config"]["name"],
+                            "agent_name": agent_name,
                             "chunk": chunk,
                             "is_final": False,
                         }
 
-                agent_name = state["agent_b_config"]["name"]
+                # Bereinige Antwort
+                cleaned_content = self._clean_agent_response(full_content, agent_name)
+
+                logger.info(f"[{session_id[:8]}] ✅ Agent B fertig: {chunk_count} Chunks, {len(cleaned_content)} Zeichen")
+                logger.debug(f"[{session_id[:8]}] 📝 Agent B RAW: {full_content[:200]}...")
+                logger.debug(f"[{session_id[:8]}] 📝 Agent B CLEANED: {cleaned_content[:200]}...")
+
+                if not cleaned_content:
+                    logger.warning(f"[{session_id[:8]}] ⚠️ Leere Antwort von Agent B!")
+
                 state["messages"].append(
-                    AIMessage(content=f"{agent_name}: {full_content}", name="agent_b")
+                    AIMessage(content=f"{agent_name}: {cleaned_content}", name="agent_b")
                 )
                 state["turns"] += 1
 
@@ -271,15 +374,18 @@ class ConflictSimulator:
                     "type": "agent_message",
                     "agent": "b",
                     "agent_name": agent_name,
-                    "content": f"{agent_name}: {full_content}",
+                    "content": cleaned_content,
                 }
 
             # Nächsten Sprecher bestimmen (mit intelligentem LLM-Routing)
+            logger.debug(f"[{session_id[:8]}] 🔀 Router wird aufgerufen...")
             next_speaker = await smart_route_next_speaker(state)
             state["next_speaker"] = next_speaker
+            logger.info(f"[{session_id[:8]}] 🔀 Router-Entscheidung: {next_speaker}")
 
         # Evaluator mit Streaming
         if next_speaker == "evaluator":
+            logger.info(f"[{session_id[:8]}] 📊 Evaluator startet...")
             yield {
                 "type": "typing",
                 "agent": "evaluator",
@@ -299,20 +405,28 @@ class ConflictSimulator:
                         "is_final": False,
                     }
 
+            logger.info(f"[{session_id[:8]}] 📊 Evaluator fertig: {len(full_content)} Zeichen")
+            logger.debug(f"[{session_id[:8]}] 📝 Evaluator: {full_content[:300]}...")
+
             state["messages"].append(
-                AIMessage(content=f"COACH: {full_content}", name="evaluator")
+                AIMessage(content=f"COACH: {full_content.strip()}", name="evaluator")
             )
 
             yield {
                 "type": "evaluation",
-                "content": f"COACH: {full_content}",
+                "content": full_content,
             }
+
+        # Cleanup
+        if session_id in self._interrupt_flags:
+            del self._interrupt_flags[session_id]
 
         # State speichern
         self.sessions[session_id] = state
 
         # Prüfen ob Human-Input erwartet wird
         if next_speaker == "human":
+            logger.info(f"[{session_id[:8]}] ⏸️ Warte auf User-Input")
             yield {
                 "type": "waiting_for_input",
                 "expected_role": determine_expected_role(state),

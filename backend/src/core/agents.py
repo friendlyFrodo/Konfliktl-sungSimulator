@@ -13,7 +13,7 @@ PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 # Modell-Konfiguration
 # Sonnet 4.5 für Roleplay-Agenten (besseres Deutsch, menschlicher)
-AGENT_MODEL = "claude-sonnet-4-5-20250514"
+AGENT_MODEL = "claude-sonnet-4-5-20250929"
 # Haiku für Router-Entscheidungen (schneller, günstiger, logischer)
 ROUTER_MODEL = "claude-3-5-haiku-20241022"
 
@@ -68,7 +68,7 @@ async def agent_a_node(state: SimulationState) -> dict:
     response = await llm.ainvoke(messages)
 
     return {
-        "messages": [AIMessage(content=f"{agent_name}: {response.content}", name="agent_a")],
+        "messages": [AIMessage(content=f"{agent_name}: {response.content.strip()}", name="agent_a")],
         "turns": state["turns"] + 1,
         "streaming_content": None,
     }
@@ -88,9 +88,20 @@ async def agent_a_node_streaming(
     system_prompt = config.get("prompt") or DEFAULT_AGENT_A_PROMPT
     agent_name = config.get("name", "Agent A")
 
+    # Strip any trailing whitespace from previous messages to avoid API errors
+    cleaned_messages = []
+    for msg in state["messages"]:
+        content = msg.content.rstrip() if hasattr(msg, 'content') else ""
+        if isinstance(msg, AIMessage):
+            cleaned_messages.append(AIMessage(content=content, name=getattr(msg, 'name', None)))
+        elif isinstance(msg, HumanMessage):
+            cleaned_messages.append(HumanMessage(content=content, name=getattr(msg, 'name', None)))
+        else:
+            cleaned_messages.append(msg)
+
     messages = [
         SystemMessage(content=f"{system_prompt}\n\nDein Name ist {agent_name}."),
-        *state["messages"]
+        *cleaned_messages
     ]
 
     full_response = ""
@@ -118,7 +129,7 @@ async def agent_b_node(state: SimulationState) -> dict:
     response = await llm.ainvoke(messages)
 
     return {
-        "messages": [AIMessage(content=f"{agent_name}: {response.content}", name="agent_b")],
+        "messages": [AIMessage(content=f"{agent_name}: {response.content.strip()}", name="agent_b")],
         "turns": state["turns"] + 1,
         "streaming_content": None,
     }
@@ -134,9 +145,20 @@ async def agent_b_node_streaming(
     system_prompt = config.get("prompt") or DEFAULT_AGENT_B_PROMPT
     agent_name = config.get("name", "Agent B")
 
+    # Strip any trailing whitespace from previous messages to avoid API errors
+    cleaned_messages = []
+    for msg in state["messages"]:
+        content = msg.content.rstrip() if hasattr(msg, 'content') else ""
+        if isinstance(msg, AIMessage):
+            cleaned_messages.append(AIMessage(content=content, name=getattr(msg, 'name', None)))
+        elif isinstance(msg, HumanMessage):
+            cleaned_messages.append(HumanMessage(content=content, name=getattr(msg, 'name', None)))
+        else:
+            cleaned_messages.append(msg)
+
     messages = [
         SystemMessage(content=f"{system_prompt}\n\nDein Name ist {agent_name}."),
-        *state["messages"]
+        *cleaned_messages
     ]
 
     full_response = ""
@@ -178,7 +200,7 @@ BEWERTUNG:
     response = await llm.ainvoke(messages)
 
     return {
-        "messages": [AIMessage(content=f"COACH: {response.content}", name="evaluator")],
+        "messages": [AIMessage(content=f"COACH: {response.content.strip()}", name="evaluator")],
     }
 
 
@@ -206,9 +228,20 @@ BEWERTUNG:
 - Kommunikationsqualität {agent_b_name}: X/10
 """
 
+    # Strip any trailing whitespace from previous messages to avoid API errors
+    cleaned_messages = []
+    for msg in state["messages"]:
+        content = msg.content.rstrip() if hasattr(msg, 'content') else ""
+        if isinstance(msg, AIMessage):
+            cleaned_messages.append(AIMessage(content=content, name=getattr(msg, 'name', None)))
+        elif isinstance(msg, HumanMessage):
+            cleaned_messages.append(HumanMessage(content=content, name=getattr(msg, 'name', None)))
+        else:
+            cleaned_messages.append(msg)
+
     messages = [
         SystemMessage(content=EVALUATOR_PROMPT + context),
-        *state["messages"]
+        *cleaned_messages
     ]
 
     full_response = ""

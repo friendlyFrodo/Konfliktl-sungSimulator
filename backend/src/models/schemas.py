@@ -49,6 +49,12 @@ class RequestEvaluationMessage(BaseModel):
     session_id: str
 
 
+class InterruptMessage(BaseModel):
+    """Sofortige Unterbrechung während Streaming."""
+    type: Literal["interrupt"] = "interrupt"
+    session_id: str
+
+
 # === Server -> Client Messages ===
 
 class AgentMessageResponse(BaseModel):
@@ -112,3 +118,10 @@ class ErrorResponse(BaseModel):
     """Fehler."""
     type: Literal["error"] = "error"
     message: str
+
+
+class InterruptedResponse(BaseModel):
+    """Session wurde unterbrochen (User greift ein)."""
+    type: Literal["interrupted"] = "interrupted"
+    session_id: str
+    message: str = "Session unterbrochen - Du kannst jetzt eingreifen"

@@ -38,6 +38,7 @@ enum ClientMessage: Codable {
     case continueSession(ContinueRequest)
     case stop(StopRequest)
     case requestEvaluation(EvaluationRequest)
+    case interrupt(InterruptRequest)
 
     struct StartSessionRequest: Codable {
         let type = "start_session"
@@ -105,6 +106,16 @@ enum ClientMessage: Codable {
             case sessionId = "session_id"
         }
     }
+
+    struct InterruptRequest: Codable {
+        let type = "interrupt"
+        let sessionId: String
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case sessionId = "session_id"
+        }
+    }
 }
 
 /// Nachrichten vom Server zum Client
@@ -115,6 +126,7 @@ enum ServerMessage: Decodable {
     case typing(TypingResponse)
     case waitingForInput(WaitingForInputResponse)
     case evaluation(EvaluationResponse)
+    case interrupted(InterruptedResponse)
     case error(ErrorResponse)
 
     struct SessionStartedResponse: Decodable {
@@ -206,6 +218,18 @@ enum ServerMessage: Decodable {
         let message: String
     }
 
+    struct InterruptedResponse: Decodable {
+        let type: String
+        let sessionId: String
+        let message: String
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case sessionId = "session_id"
+            case message
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case type
     }
@@ -229,6 +253,8 @@ enum ServerMessage: Decodable {
             self = .waitingForInput(try singleContainer.decode(WaitingForInputResponse.self))
         case "evaluation":
             self = .evaluation(try singleContainer.decode(EvaluationResponse.self))
+        case "interrupted":
+            self = .interrupted(try singleContainer.decode(InterruptedResponse.self))
         case "error":
             self = .error(try singleContainer.decode(ErrorResponse.self))
         default:

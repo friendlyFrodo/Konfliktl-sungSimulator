@@ -9,7 +9,7 @@ struct ChatView: View {
             // Chat Messages
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 12) {
                         ForEach(viewModel.messages) { message in
                             MessageBubble(message: message)
                                 .id(message.id)
@@ -212,6 +212,24 @@ struct InputArea: View {
                 }
                 .disabled(!canSend)
                 .buttonStyle(.plain)
+
+                // Eingreifen Button (während Streaming)
+                if viewModel.typingAgentName != nil || viewModel.streamingMessage != nil {
+                    Button(action: viewModel.intervene) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "hand.raised.fill")
+                            Text("Eingreifen")
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.orange)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Unterbreche das Gespräch und greife als Mediator ein")
+                }
 
                 // Stop/Evaluate Button
                 Button(action: viewModel.stopAndEvaluate) {

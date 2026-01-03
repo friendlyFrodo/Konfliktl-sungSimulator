@@ -6,9 +6,20 @@ struct ContentView: View {
 
     // Session Configuration
     @State private var selectedMode: SimulationMode = .mediator
-    @State private var agentAConfig = AgentConfig.defaultAgentA
-    @State private var agentBConfig = AgentConfig.defaultAgentB
-    @State private var scenarioText: String = ""
+    @State private var agentAConfig = AgentConfig(
+        name: "Maria",
+        prompt: "Du bist Maria, 42 Jahre, Senior Projektmanagerin mit 15 Jahren Berufserfahrung. Du bist direkt, professionell und erwartest Respekt für deine Position. Du fühlst dich von Stefan hintergangen und bist enttäuscht über seinen Vertrauensbruch."
+    )
+    @State private var agentBConfig = AgentConfig(
+        name: "Stefan",
+        prompt: "Du bist Stefan, 35 Jahre, ambitionierter Projektmitarbeiter der Karriere machen will. Du bist ehrgeizig, manchmal ungeduldig und verstehst nicht, warum Maria so reagiert. Du wolltest Initiative zeigen und siehst dich zu Unrecht kritisiert."
+    )
+    @State private var scenarioText: String = """
+Maria (42, Senior Projektmanagerin) und Stefan (35, ambitionierter Projektmitarbeiter) arbeiten seit 2 Jahren im selben Team. \
+Letzte Woche hat Stefan dem Abteilungsleiter eine innovative Lösung für das aktuelle Kundenprojekt präsentiert - ohne Maria vorher einzuweihen. \
+Die Idee wurde gut aufgenommen, und der Chef lobte Stefan öffentlich. Maria fühlt sich übergangen und hinterfragt Stefans Loyalität. \
+Stefan versteht nicht, warum Maria so reagiert - er wollte doch nur Initiative zeigen. Beide treffen sich jetzt zum Klärungsgespräch.
+"""
     @State private var userRole: String = "agent_a"
 
     // UI State
@@ -154,12 +165,32 @@ struct NewSessionSheet: View {
     let onStart: () -> Void
     let onCancel: () -> Void
 
-    // Presets
+    // Presets - Arbeitsplatz ist der erste (default)
     let presetScenarios = [
-        ("Paar-Konflikt", "Lisa und Thomas sind seit 5 Jahren zusammen. Sie streiten sich über die Haushaltsaufteilung. Lisa fühlt sich überarbeitet."),
-        ("Arbeitsplatz", "Maria und Stefan arbeiten am selben Projekt. Stefan hat dem Chef eine Idee präsentiert, ohne Maria einzubeziehen."),
-        ("Familie", "Markus hat seiner Mutter erzählt, dass er seinen IT-Job gekündigt hat, um als Künstler zu arbeiten."),
-        ("WG", "Alex wurde von Kims lauter Musik geweckt, nachdem er die ganze Nacht durchgearbeitet hat."),
+        ("Arbeitsplatz", """
+Maria (42, Senior Projektmanagerin) und Stefan (35, ambitionierter Projektmitarbeiter) arbeiten seit 2 Jahren im selben Team. \
+Letzte Woche hat Stefan dem Abteilungsleiter eine innovative Lösung für das aktuelle Kundenprojekt präsentiert - ohne Maria vorher einzuweihen. \
+Die Idee wurde gut aufgenommen, und der Chef lobte Stefan öffentlich. Maria fühlt sich übergangen und hinterfragt Stefans Loyalität. \
+Stefan versteht nicht, warum Maria so reagiert - er wollte doch nur Initiative zeigen. Beide treffen sich jetzt zum Klärungsgespräch.
+"""),
+        ("Paar-Konflikt", """
+Lisa (34, Vollzeit-Marketingmanagerin) und Thomas (36, Softwareentwickler mit flexiblen Arbeitszeiten) sind seit 5 Jahren zusammen und wohnen seit 3 Jahren in einer gemeinsamen Wohnung. \
+Lisa kommt jeden Abend erschöpft nach Hause und findet regelmäßig unerledigte Hausarbeit vor, während Thomas am PC sitzt. \
+Sie hat das Gefühl, dass sie neben ihrem anspruchsvollen Job auch noch den gesamten Haushalt managt. \
+Thomas findet, dass er seinen fairen Anteil beiträgt und Lisa übertreibt. Heute Abend eskaliert der Streit nach einem besonders stressigen Tag.
+"""),
+        ("Familie", """
+Markus (28) hat gerade seiner Mutter Renate (58) eröffnet, dass er seinen gut bezahlten IT-Job bei einem DAX-Konzern gekündigt hat, um Vollzeit als freischaffender Künstler zu arbeiten. \
+Renate, die selbst hart gearbeitet hat, um Markus das Studium zu ermöglichen, ist schockiert. Sie macht sich Sorgen um seine finanzielle Zukunft und Altersvorsorge. \
+Markus fühlt sich seit Jahren in seinem Job gefangen und hat endlich den Mut gefunden, seinen Traum zu verfolgen. \
+Er hat 6 Monate Ersparnisse und erste Aufträge. Das Gespräch findet bei Kaffee und Kuchen in Renates Wohnzimmer statt.
+"""),
+        ("WG", """
+Alex (24, Masterstudent im letzten Semester) und Kim (23, Remote-Mitarbeiter bei einem Startup) teilen sich seit 8 Monaten eine 2-Zimmer-Wohnung. \
+Alex schreibt gerade unter Hochdruck seine Masterarbeit und arbeitet oft bis 4 Uhr morgens, um tagsüber Ruhe zum Schlafen zu finden. \
+Kim arbeitet flexible Stunden und macht gerne laute Musik beim Arbeiten, hat häufig spontan Freunde zu Besuch. \
+Es ist Sonntagmittag, Alex wurde zum dritten Mal diese Woche von Kims Musik geweckt. Die Abgabe ist in 2 Wochen.
+"""),
     ]
 
     var body: some View {

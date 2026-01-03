@@ -12,7 +12,10 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "KonfliktSimulator",
-            path: "Sources/KonfliktSimulator"
+            path: "Sources/KonfliktSimulator",
+            resources: [
+                .copy("Resources/Info.plist")
+            ]
         )
     ]
 )

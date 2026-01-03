@@ -4,11 +4,16 @@ Entscheidet, wer als nächstes sprechen soll.
 Verwendet Haiku für intelligente Routing-Entscheidungen.
 """
 
+import logging
 from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from .state import SimulationState
 from .agents import get_router_llm
+
+# Logging
+logger = logging.getLogger("konflikt.router")
+logger.setLevel(logging.DEBUG)
 
 
 ROUTER_SYSTEM_PROMPT = """Du bist ein Konflikt-Routing-System. Analysiere die letzten Nachrichten und entscheide, was als nächstes passieren soll.
@@ -157,13 +162,17 @@ async def smart_route_next_speaker(state: SimulationState) -> Literal["agent_a",
     Returns:
         Der nächste Sprecher
     """
+    session_id = state.get("session_id", "unknown")[:8]
+
     # Schnelle Checks zuerst
     if state.get("should_stop", False):
+        logger.info(f"[{session_id}] Router: should_stop=True -> evaluator")
         return "evaluator"
 
     messages = state.get("messages", [])
     if len(messages) < 2:
-        return "agent_a"  # Am Anfang einfach abwechseln
+        logger.info(f"[{session_id}] Router: Wenige Nachrichten -> agent_a (Start)")
+        return "agent_a"
 
     # Letzte 4 Nachrichten für Kontext
     recent_messages = messages[-4:]
@@ -186,6 +195,8 @@ Letzte Nachrichten:
 Wer soll als nächstes sprechen?
 """
 
+    logger.debug(f"[{session_id}] Router-Prompt:\n{prompt}")
+
     try:
         llm = get_router_llm()
         response = await llm.ainvoke([
@@ -193,20 +204,30 @@ Wer soll als nächstes sprechen?
             HumanMessage(content=prompt)
         ])
 
-        decision = response.content.strip().upper()
+        raw_decision = response.content.strip()
+        decision = raw_decision.upper()
+
+        logger.info(f"[{session_id}] Router RAW-Antwort: '{raw_decision}'")
 
         if "AGENT_A" in decision:
+            logger.info(f"[{session_id}] Router -> agent_a")
             return "agent_a"
         elif "AGENT_B" in decision:
+            logger.info(f"[{session_id}] Router -> agent_b")
             return "agent_b"
         elif "HUMAN" in decision:
+            logger.info(f"[{session_id}] Router -> human")
             return "human"
         elif "EVALUATOR" in decision:
+            logger.info(f"[{session_id}] Router -> evaluator")
             return "evaluator"
         else:
             # Fallback auf einfache Logik
-            return route_next_speaker(state)
+            fallback = route_next_speaker(state)
+            logger.warning(f"[{session_id}] Router: Unbekannte Antwort '{raw_decision}', Fallback -> {fallback}")
+            return fallback
 
     except Exception as e:
-        print(f"[Router] LLM-Fehler, Fallback auf Regellogik: {e}")
-        return route_next_speaker(state)
+        fallback = route_next_speaker(state)
+        logger.error(f"[{session_id}] Router LLM-Fehler: {e}, Fallback -> {fallback}")
+        return fallback

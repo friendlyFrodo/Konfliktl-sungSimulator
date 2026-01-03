@@ -427,7 +427,59 @@ DATABASE_PATH=konflikt_simulator.db  # Optional
 
 ---
 
-## 10. Erweiterungsmöglichkeiten
+## 10. Implementierte Features (v0.2.0)
+
+### 10.1 Umfassendes Logging
+
+Das Backend loggt jetzt alle wichtigen Events:
+
+```
+[konflikt.graph] [Session-ID] Agent A (Lisa) beginnt...
+[konflikt.graph] [Session-ID] Agent A RAW: "Lisa: Ich finde das..."
+[konflikt.graph] [Session-ID] Agent A CLEANED: "Ich finde das..."
+[konflikt.router] [Session-ID] Router RAW-Antwort: 'AGENT_B'
+```
+
+**Logger-Hierarchie:**
+- `konflikt.main` - Server-Startup, Verbindungen
+- `konflikt.graph` - Graph-Ausführung, Streaming
+- `konflikt.router` - Routing-Entscheidungen
+- `konflikt.websocket` - WebSocket-Nachrichten
+
+### 10.2 Interrupt-Mechanismus (User greift ein)
+
+User kann jetzt aktiv während des Streamings eingreifen:
+
+```json
+// Client -> Server
+{"type": "interrupt", "session_id": "uuid"}
+
+// Server -> Client
+{"type": "interrupted", "session_id": "uuid", "message": "Session unterbrochen..."}
+{"type": "waiting_for_input", "session_id": "uuid", "expected_role": "mediator"}
+```
+
+**UI-Element:** Oranger "Eingreifen"-Button erscheint während Agents tippen.
+
+### 10.3 Antwort-Bereinigung
+
+Das Backend bereinigt Agent-Antworten automatisch:
+- Entfernt doppelte Namen (`"Lisa: Lisa: Text"` -> `"Lisa: Text"`)
+- Erkennt verschiedene Formatierungen (`**Lisa**:`, `*Lisa*:`)
+- Loggt Warnungen bei leeren Antworten
+
+### 10.4 Mimik/Gestik in dritter Person
+
+Agenten beschreiben ihre Körpersprache jetzt für den Leser:
+
+| Vorher (1. Person) | Nachher (3. Person) |
+|-------------------|---------------------|
+| *Ich verschränke die Arme* | *Lisa verschränkt die Arme* |
+| *seufze* | *Thomas seufzt* |
+
+---
+
+## 11. Erweiterungsmöglichkeiten
 
 1. **Mehr Szenarien**: Weitere vordefinierte Konfliktszenarien
 2. **Session-Export**: PDF/Markdown Export der Konversation
