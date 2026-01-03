@@ -19,6 +19,13 @@ class ChatViewModel: ObservableObject {
     // Streaming
     @Published var streamingMessage: Message? = nil
 
+    // Neue Architektur: User-Entscheidung nach jedem Statement
+    @Published var isWaitingForDecision: Bool = false
+    @Published var suggestedNextAgent: String? = nil   // "agent_a" oder "agent_b"
+    @Published var suggestedNextName: String? = nil
+    @Published var agentAName: String = "Agent A"
+    @Published var agentBName: String = "Agent B"
+
     // MARK: - Services
 
     let webSocketService: WebSocketService
@@ -122,11 +129,32 @@ class ChatViewModel: ObservableObject {
         webSocketService.interruptSession(sessionId: sessionId)
     }
 
-    /// Session fortsetzen
+    /// Session fortsetzen (lässt den nächsten Agent sprechen)
     func continueSession() {
         guard let sessionId = currentSessionId else { return }
         isWaitingForInput = false
+        isWaitingForDecision = false
         webSocketService.continueSession(sessionId: sessionId)
+    }
+
+    /// User entscheidet: Lass den anderen Agent antworten
+    func letNextAgentSpeak() {
+        continueSession()
+    }
+
+    /// User entscheidet: Selbst etwas beitragen
+    func userWantsToContribute() {
+        isWaitingForDecision = false
+        isWaitingForInput = true
+        expectedRole = "mediator"
+    }
+
+    /// Gespräch beenden und Evaluierung anfordern
+    func requestEvaluation() {
+        guard let sessionId = currentSessionId else { return }
+        isWaitingForDecision = false
+        isWaitingForInput = false
+        webSocketService.stopSession(sessionId: sessionId)
     }
 
     // MARK: - Private Methods
@@ -204,6 +232,19 @@ class ChatViewModel: ObservableObject {
             expectedRole = response.expectedRole
             typingAgent = nil
             typingAgentName = nil
+
+        case .waitingForDecision(let response):
+            // Neue Architektur: User entscheidet nach jedem Statement
+            isWaitingForDecision = true
+            isWaitingForInput = false
+            suggestedNextAgent = response.suggestedNext
+            suggestedNextName = response.suggestedNextName
+            agentAName = response.agentAName
+            agentBName = response.agentBName
+            typingAgent = nil
+            typingAgentName = nil
+            streamingMessage = nil
+            print("🎯 Waiting for decision - suggested: \(response.suggestedNextName)")
 
         case .evaluation(let response):
             typingAgent = nil

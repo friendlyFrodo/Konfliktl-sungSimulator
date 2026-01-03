@@ -172,39 +172,128 @@ struct TypingIndicator: View {
     }
 }
 
-/// Eingabebereich
+/// Eingabebereich - Neue Architektur mit Decision Buttons
 struct InputArea: View {
     @ObservedObject var viewModel: ChatViewModel
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Status
-            if viewModel.isWaitingForInput {
+        VStack(spacing: 12) {
+            // Decision Buttons (nach jedem Agent-Statement)
+            if viewModel.isWaitingForDecision {
+                DecisionButtons(viewModel: viewModel)
+            }
+            // Text-Eingabe (wenn User beitragen möchte)
+            else if viewModel.isWaitingForInput {
+                UserInputArea(viewModel: viewModel)
+            }
+            // Während Agent spricht - nichts anzeigen
+            else if viewModel.typingAgentName != nil || viewModel.streamingMessage != nil {
                 HStack {
-                    Image(systemName: "hand.raised.fill")
-                        .foregroundColor(.orange)
-                    Text("Du bist dran als \(roleDisplayName)")
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("\(viewModel.typingAgentName ?? "Agent") spricht...")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
+                .padding()
+            }
+        }
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+}
+
+/// Decision Buttons nach jedem Agent-Statement
+struct DecisionButtons: View {
+    @ObservedObject var viewModel: ChatViewModel
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("Was möchtest du tun?")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            HStack(spacing: 12) {
+                // Lass anderen Agent antworten
+                Button(action: viewModel.letNextAgentSpeak) {
+                    HStack {
+                        Image(systemName: "bubble.left.fill")
+                        Text("Lass \(viewModel.suggestedNextName ?? "Agent") antworten")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.accentColor)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+
+                // Selbst beitragen
+                Button(action: viewModel.userWantsToContribute) {
+                    HStack {
+                        Image(systemName: "hand.raised.fill")
+                        Text("Selbst beitragen")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.orange)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+
+                // Gespräch beenden
+                Button(action: viewModel.requestEvaluation) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Auswerten")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.purple)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding()
+    }
+}
+
+/// User Input Bereich
+struct UserInputArea: View {
+    @ObservedObject var viewModel: ChatViewModel
+
+    var body: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Image(systemName: "hand.raised.fill")
+                    .foregroundColor(.orange)
+                Text("Dein Beitrag als Mediator")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Spacer()
+
+                // Zurück zu Decision
+                Button(action: { viewModel.isWaitingForInput = false; viewModel.isWaitingForDecision = true }) {
+                    Text("Abbrechen")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
             }
 
             HStack(spacing: 12) {
-                // Text Input
-                TextField("Nachricht eingeben...", text: $viewModel.inputText)
+                TextField("Deine Nachricht...", text: $viewModel.inputText)
                     .textFieldStyle(.plain)
                     .padding(10)
                     .background(Color.gray.opacity(0.1))
                     .cornerRadius(8)
-                    .disabled(!viewModel.isWaitingForInput)
                     .onSubmit {
                         viewModel.sendMessage()
                     }
 
-                // Send Button
                 Button(action: viewModel.sendMessage) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 28))
@@ -212,51 +301,13 @@ struct InputArea: View {
                 }
                 .disabled(!canSend)
                 .buttonStyle(.plain)
-
-                // Eingreifen Button (während Streaming)
-                if viewModel.typingAgentName != nil || viewModel.streamingMessage != nil {
-                    Button(action: viewModel.intervene) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "hand.raised.fill")
-                            Text("Eingreifen")
-                                .font(.caption)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.orange)
-                        .foregroundColor(.white)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                    .help("Unterbreche das Gespräch und greife als Mediator ein")
-                }
-
-                // Stop/Evaluate Button
-                Button(action: viewModel.stopAndEvaluate) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(.red)
-                }
-                .buttonStyle(.plain)
-                .help("Session beenden und Evaluierung anfordern")
             }
-            .padding()
         }
-        .background(Color(NSColor.windowBackgroundColor))
+        .padding()
     }
 
     private var canSend: Bool {
-        viewModel.isWaitingForInput &&
         !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private var roleDisplayName: String {
-        switch viewModel.expectedRole {
-        case "mediator": return "Mediator"
-        case "agent_a": return "Agent A"
-        case "agent_b": return "Agent B"
-        default: return viewModel.expectedRole
-        }
     }
 }
 

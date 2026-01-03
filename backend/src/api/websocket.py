@@ -131,8 +131,8 @@ async def handle_start_session(
             SessionStartedResponse(session_id=session_id).model_dump()
         )
 
-        # Simulation starten (mit Streaming)
-        async for event in simulator.run_with_streaming(session_id):
+        # Erster Agent spricht (Single Turn)
+        async for event in simulator.run_single_turn(session_id):
             await send_event(websocket, session_id, event)
 
     except Exception as e:
@@ -162,8 +162,8 @@ async def handle_user_message(
             )
             return
 
-        # Simulation fortsetzen
-        async for event in simulator.run_with_streaming(msg.session_id):
+        # Nächster Agent spricht (Single Turn)
+        async for event in simulator.run_single_turn(msg.session_id):
             await send_event(websocket, msg.session_id, event)
 
     except Exception as e:
@@ -177,11 +177,12 @@ async def handle_continue(
     client_id: str,
     message: dict,
 ):
-    """Setzt eine pausierte Session fort."""
+    """Lässt den nächsten Agent sprechen (User hat entschieden)."""
     try:
         msg = ContinueMessage(**message)
+        logger.info(f"[{client_id[:8]}] ▶️ Continue - nächster Agent spricht")
 
-        async for event in simulator.run_with_streaming(msg.session_id):
+        async for event in simulator.run_single_turn(msg.session_id):
             await send_event(websocket, msg.session_id, event)
 
     except Exception as e:
@@ -198,6 +199,7 @@ async def handle_stop(
     """Stoppt eine Session und ruft Evaluierung auf."""
     try:
         msg = StopMessage(**message)
+        logger.info(f"[{client_id[:8]}] 🛑 Stop - Evaluator wird aufgerufen")
 
         success = await simulator.stop_session(msg.session_id)
         if not success:
@@ -207,7 +209,7 @@ async def handle_stop(
             return
 
         # Evaluator aufrufen
-        async for event in simulator.run_with_streaming(msg.session_id):
+        async for event in simulator.run_single_turn(msg.session_id):
             await send_event(websocket, msg.session_id, event)
 
     except Exception as e:
@@ -224,11 +226,12 @@ async def handle_request_evaluation(
     """Fordert eine Evaluierung an."""
     try:
         msg = RequestEvaluationMessage(**message)
+        logger.info(f"[{client_id[:8]}] 📊 Evaluierung angefordert")
 
         # Stop und Evaluate
         await simulator.stop_session(msg.session_id)
 
-        async for event in simulator.run_with_streaming(msg.session_id):
+        async for event in simulator.run_single_turn(msg.session_id):
             await send_event(websocket, msg.session_id, event)
 
     except Exception as e:
@@ -320,6 +323,17 @@ async def send_event(websocket: WebSocket, session_id: str, event: dict):
             "type": "evaluation",
             "session_id": session_id,
             "content": event["content"],
+        })
+
+    elif event_type == "waiting_for_decision":
+        # Neue Architektur: User entscheidet nach jedem Agent-Statement
+        await websocket.send_json({
+            "type": "waiting_for_decision",
+            "session_id": session_id,
+            "suggested_next": event["suggested_next"],
+            "suggested_next_name": event["suggested_next_name"],
+            "agent_a_name": event["agent_a_name"],
+            "agent_b_name": event["agent_b_name"],
         })
 
     elif event_type == "error":

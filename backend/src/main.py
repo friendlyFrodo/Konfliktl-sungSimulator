@@ -37,6 +37,7 @@ logging.getLogger("konflikt.websocket").setLevel(logging.DEBUG)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("anthropic").setLevel(logging.INFO)
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 logger = logging.getLogger("konflikt.main")
 

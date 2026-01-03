@@ -237,11 +237,15 @@ class ConflictSimulator:
 
         return content
 
-    async def run_with_streaming(
+    async def run_single_turn(
         self,
         session_id: str,
     ) -> AsyncIterator[dict]:
-        """Führt den Graphen mit Token-Streaming aus.
+        """Führt EINEN Agent-Turn aus und wartet dann auf User-Entscheidung.
+
+        Diese neue Architektur gibt dem User nach jedem Statement die Kontrolle:
+        - User kann den anderen Agent antworten lassen
+        - User kann selbst etwas einbringen
 
         Yields:
             Streaming-Events während der Ausführung
@@ -251,140 +255,13 @@ class ConflictSimulator:
             yield {"type": "error", "message": "Session not found"}
             return
 
-        # Interrupt-Flag initialisieren
-        self._interrupt_flags[session_id] = False
-
         state = self.sessions[session_id]
         next_speaker = state.get("next_speaker", "agent_a")
 
-        logger.info(f"[{session_id[:8]}] ▶️ Streaming gestartet, nächster Sprecher: {next_speaker}")
+        logger.info(f"[{session_id[:8]}] ▶️ Single Turn gestartet, Sprecher: {next_speaker}")
 
-        while next_speaker not in ["human", "evaluator", "end"]:
-            # Prüfe Interrupt
-            if self._interrupt_flags.get(session_id, False):
-                logger.info(f"[{session_id[:8]}] 🛑 Interrupt erkannt, breche ab")
-                next_speaker = "evaluator"
-                break
-
-            if state.get("should_stop"):
-                logger.info(f"[{session_id[:8]}] should_stop=True, wechsle zu Evaluator")
-                next_speaker = "evaluator"
-                break
-
-            # Typing-Indikator
-            if next_speaker == "agent_a":
-                agent_name = state["agent_a_config"]["name"]
-                logger.info(f"[{session_id[:8]}] 💬 Agent A ({agent_name}) beginnt...")
-                yield {
-                    "type": "typing",
-                    "agent": "a",
-                    "agent_name": agent_name,
-                }
-
-                # Streaming mit Interrupt-Prüfung
-                full_content = ""
-                chunk_count = 0
-                async for chunk, is_final in agent_a_node_streaming(state):
-                    # Interrupt-Check während Streaming
-                    if self._interrupt_flags.get(session_id, False):
-                        logger.info(f"[{session_id[:8]}] 🛑 Streaming unterbrochen für Agent A")
-                        break
-
-                    if is_final:
-                        full_content = chunk
-                    else:
-                        chunk_count += 1
-                        yield {
-                            "type": "streaming_chunk",
-                            "agent": "a",
-                            "agent_name": agent_name,
-                            "chunk": chunk,
-                            "is_final": False,
-                        }
-
-                # Bereinige Antwort
-                cleaned_content = self._clean_agent_response(full_content, agent_name)
-
-                logger.info(f"[{session_id[:8]}] ✅ Agent A fertig: {chunk_count} Chunks, {len(cleaned_content)} Zeichen")
-                logger.debug(f"[{session_id[:8]}] 📝 Agent A RAW: {full_content[:200]}...")
-                logger.debug(f"[{session_id[:8]}] 📝 Agent A CLEANED: {cleaned_content[:200]}...")
-
-                # Validierung: Leere Antwort?
-                if not cleaned_content:
-                    logger.warning(f"[{session_id[:8]}] ⚠️ Leere Antwort von Agent A!")
-
-                # Finale Nachricht
-                state["messages"].append(
-                    AIMessage(content=f"{agent_name}: {cleaned_content}", name="agent_a")
-                )
-                state["turns"] += 1
-
-                yield {
-                    "type": "agent_message",
-                    "agent": "a",
-                    "agent_name": agent_name,
-                    "content": cleaned_content,
-                }
-
-            elif next_speaker == "agent_b":
-                agent_name = state["agent_b_config"]["name"]
-                logger.info(f"[{session_id[:8]}] 💬 Agent B ({agent_name}) beginnt...")
-                yield {
-                    "type": "typing",
-                    "agent": "b",
-                    "agent_name": agent_name,
-                }
-
-                full_content = ""
-                chunk_count = 0
-                async for chunk, is_final in agent_b_node_streaming(state):
-                    # Interrupt-Check
-                    if self._interrupt_flags.get(session_id, False):
-                        logger.info(f"[{session_id[:8]}] 🛑 Streaming unterbrochen für Agent B")
-                        break
-
-                    if is_final:
-                        full_content = chunk
-                    else:
-                        chunk_count += 1
-                        yield {
-                            "type": "streaming_chunk",
-                            "agent": "b",
-                            "agent_name": agent_name,
-                            "chunk": chunk,
-                            "is_final": False,
-                        }
-
-                # Bereinige Antwort
-                cleaned_content = self._clean_agent_response(full_content, agent_name)
-
-                logger.info(f"[{session_id[:8]}] ✅ Agent B fertig: {chunk_count} Chunks, {len(cleaned_content)} Zeichen")
-                logger.debug(f"[{session_id[:8]}] 📝 Agent B RAW: {full_content[:200]}...")
-                logger.debug(f"[{session_id[:8]}] 📝 Agent B CLEANED: {cleaned_content[:200]}...")
-
-                if not cleaned_content:
-                    logger.warning(f"[{session_id[:8]}] ⚠️ Leere Antwort von Agent B!")
-
-                state["messages"].append(
-                    AIMessage(content=f"{agent_name}: {cleaned_content}", name="agent_b")
-                )
-                state["turns"] += 1
-
-                yield {
-                    "type": "agent_message",
-                    "agent": "b",
-                    "agent_name": agent_name,
-                    "content": cleaned_content,
-                }
-
-            # Nächsten Sprecher bestimmen (mit intelligentem LLM-Routing)
-            logger.debug(f"[{session_id[:8]}] 🔀 Router wird aufgerufen...")
-            next_speaker = await smart_route_next_speaker(state)
-            state["next_speaker"] = next_speaker
-            logger.info(f"[{session_id[:8]}] 🔀 Router-Entscheidung: {next_speaker}")
-
-        # Evaluator mit Streaming
-        if next_speaker == "evaluator":
+        # Evaluator-Anforderung?
+        if next_speaker == "evaluator" or state.get("should_stop"):
             logger.info(f"[{session_id[:8]}] 📊 Evaluator startet...")
             yield {
                 "type": "typing",
@@ -406,31 +283,133 @@ class ConflictSimulator:
                     }
 
             logger.info(f"[{session_id[:8]}] 📊 Evaluator fertig: {len(full_content)} Zeichen")
-            logger.debug(f"[{session_id[:8]}] 📝 Evaluator: {full_content[:300]}...")
 
             state["messages"].append(
                 AIMessage(content=f"COACH: {full_content.strip()}", name="evaluator")
             )
+            self.sessions[session_id] = state
 
             yield {
                 "type": "evaluation",
                 "content": full_content,
             }
+            return
 
-        # Cleanup
-        if session_id in self._interrupt_flags:
-            del self._interrupt_flags[session_id]
-
-        # State speichern
-        self.sessions[session_id] = state
-
-        # Prüfen ob Human-Input erwartet wird
-        if next_speaker == "human":
-            logger.info(f"[{session_id[:8]}] ⏸️ Warte auf User-Input")
+        # Agent A spricht
+        if next_speaker == "agent_a":
+            agent_name = state["agent_a_config"]["name"]
+            other_agent_name = state["agent_b_config"]["name"]
+            logger.info(f"[{session_id[:8]}] 💬 Agent A ({agent_name}) beginnt...")
             yield {
-                "type": "waiting_for_input",
-                "expected_role": determine_expected_role(state),
+                "type": "typing",
+                "agent": "a",
+                "agent_name": agent_name,
             }
+
+            full_content = ""
+            chunk_count = 0
+            async for chunk, is_final in agent_a_node_streaming(state):
+                if is_final:
+                    full_content = chunk
+                else:
+                    chunk_count += 1
+                    yield {
+                        "type": "streaming_chunk",
+                        "agent": "a",
+                        "agent_name": agent_name,
+                        "chunk": chunk,
+                        "is_final": False,
+                    }
+
+            cleaned_content = self._clean_agent_response(full_content, agent_name)
+            logger.info(f"[{session_id[:8]}] ✅ Agent A fertig: {chunk_count} Chunks, {len(cleaned_content)} Zeichen")
+
+            if cleaned_content:
+                state["messages"].append(
+                    AIMessage(content=f"{agent_name}: {cleaned_content}", name="agent_a")
+                )
+                state["turns"] += 1
+
+                yield {
+                    "type": "agent_message",
+                    "agent": "a",
+                    "agent_name": agent_name,
+                    "content": cleaned_content,
+                }
+
+            # Nächsten Sprecher auf B setzen (User entscheidet)
+            state["next_speaker"] = "agent_b"
+            self.sessions[session_id] = state
+
+            # Warte auf User-Entscheidung
+            yield {
+                "type": "waiting_for_decision",
+                "suggested_next": "agent_b",
+                "suggested_next_name": other_agent_name,
+                "agent_a_name": agent_name,
+                "agent_b_name": other_agent_name,
+            }
+            return
+
+        # Agent B spricht
+        if next_speaker == "agent_b":
+            agent_name = state["agent_b_config"]["name"]
+            other_agent_name = state["agent_a_config"]["name"]
+            logger.info(f"[{session_id[:8]}] 💬 Agent B ({agent_name}) beginnt...")
+            yield {
+                "type": "typing",
+                "agent": "b",
+                "agent_name": agent_name,
+            }
+
+            full_content = ""
+            chunk_count = 0
+            async for chunk, is_final in agent_b_node_streaming(state):
+                if is_final:
+                    full_content = chunk
+                else:
+                    chunk_count += 1
+                    yield {
+                        "type": "streaming_chunk",
+                        "agent": "b",
+                        "agent_name": agent_name,
+                        "chunk": chunk,
+                        "is_final": False,
+                    }
+
+            cleaned_content = self._clean_agent_response(full_content, agent_name)
+            logger.info(f"[{session_id[:8]}] ✅ Agent B fertig: {chunk_count} Chunks, {len(cleaned_content)} Zeichen")
+
+            if cleaned_content:
+                state["messages"].append(
+                    AIMessage(content=f"{agent_name}: {cleaned_content}", name="agent_b")
+                )
+                state["turns"] += 1
+
+                yield {
+                    "type": "agent_message",
+                    "agent": "b",
+                    "agent_name": agent_name,
+                    "content": cleaned_content,
+                }
+
+            # Nächsten Sprecher auf A setzen (User entscheidet)
+            state["next_speaker"] = "agent_a"
+            self.sessions[session_id] = state
+
+            # Warte auf User-Entscheidung
+            yield {
+                "type": "waiting_for_decision",
+                "suggested_next": "agent_a",
+                "suggested_next_name": other_agent_name,
+                "agent_a_name": other_agent_name,
+                "agent_b_name": agent_name,
+            }
+            return
+
+        # Unbekannter Zustand
+        logger.error(f"[{session_id[:8]}] ❌ Unbekannter next_speaker: {next_speaker}")
+        yield {"type": "error", "message": f"Unknown speaker: {next_speaker}"}
 
     async def add_human_message(
         self,

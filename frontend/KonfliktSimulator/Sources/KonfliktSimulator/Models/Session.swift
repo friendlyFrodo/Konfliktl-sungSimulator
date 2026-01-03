@@ -125,6 +125,7 @@ enum ServerMessage: Decodable {
     case streamingChunk(StreamingChunkResponse)
     case typing(TypingResponse)
     case waitingForInput(WaitingForInputResponse)
+    case waitingForDecision(WaitingForDecisionResponse)
     case evaluation(EvaluationResponse)
     case interrupted(InterruptedResponse)
     case error(ErrorResponse)
@@ -201,6 +202,25 @@ enum ServerMessage: Decodable {
         }
     }
 
+    /// Neue Architektur: User entscheidet nach jedem Agent-Statement
+    struct WaitingForDecisionResponse: Decodable {
+        let type: String
+        let sessionId: String
+        let suggestedNext: String      // "agent_a" oder "agent_b"
+        let suggestedNextName: String  // Name des nächsten Agents
+        let agentAName: String
+        let agentBName: String
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case sessionId = "session_id"
+            case suggestedNext = "suggested_next"
+            case suggestedNextName = "suggested_next_name"
+            case agentAName = "agent_a_name"
+            case agentBName = "agent_b_name"
+        }
+    }
+
     struct EvaluationResponse: Decodable {
         let type: String
         let sessionId: String
@@ -251,6 +271,8 @@ enum ServerMessage: Decodable {
             self = .typing(try singleContainer.decode(TypingResponse.self))
         case "waiting_for_input":
             self = .waitingForInput(try singleContainer.decode(WaitingForInputResponse.self))
+        case "waiting_for_decision":
+            self = .waitingForDecision(try singleContainer.decode(WaitingForDecisionResponse.self))
         case "evaluation":
             self = .evaluation(try singleContainer.decode(EvaluationResponse.self))
         case "interrupted":

@@ -1,6 +1,7 @@
 """Agent Nodes für die LangGraph State Machine."""
 
 import os
+import logging
 from pathlib import Path
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -8,14 +9,17 @@ from typing import AsyncIterator
 
 from .state import SimulationState
 
+# Logging
+logger = logging.getLogger("konflikt.agents")
+logger.setLevel(logging.DEBUG)
+
 # Prompts laden
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 # Modell-Konfiguration
-# Sonnet 4.5 für Roleplay-Agenten (besseres Deutsch, menschlicher)
-AGENT_MODEL = "claude-sonnet-4-5-20250929"
-# Haiku für Router-Entscheidungen (schneller, günstiger, logischer)
-ROUTER_MODEL = "claude-3-5-haiku-20241022"
+# Sonnet 4.5 für alle Aufgaben
+AGENT_MODEL = "claude-sonnet-4-5"
+ROUTER_MODEL = "claude-sonnet-4-5"
 
 
 def load_prompt(filename: str) -> str:
@@ -88,27 +92,40 @@ async def agent_a_node_streaming(
     system_prompt = config.get("prompt") or DEFAULT_AGENT_A_PROMPT
     agent_name = config.get("name", "Agent A")
 
-    # Strip any trailing whitespace from previous messages to avoid API errors
+    # Konvertiere Nachrichten: Agent A's eigene = AIMessage, andere = HumanMessage
     cleaned_messages = []
     for msg in state["messages"]:
         content = msg.content.rstrip() if hasattr(msg, 'content') else ""
-        if isinstance(msg, AIMessage):
-            cleaned_messages.append(AIMessage(content=content, name=getattr(msg, 'name', None)))
-        elif isinstance(msg, HumanMessage):
-            cleaned_messages.append(HumanMessage(content=content, name=getattr(msg, 'name', None)))
+        msg_name = getattr(msg, 'name', None)
+
+        # Agent A's eigene Nachrichten bleiben AIMessage
+        if msg_name == "agent_a":
+            cleaned_messages.append(AIMessage(content=content, name=msg_name))
+        # Alle anderen (agent_b, mediator, system) werden HumanMessage
+        elif isinstance(msg, AIMessage):
+            cleaned_messages.append(HumanMessage(content=content, name=msg_name))
         else:
-            cleaned_messages.append(msg)
+            cleaned_messages.append(HumanMessage(content=content, name=msg_name))
 
     messages = [
         SystemMessage(content=f"{system_prompt}\n\nDein Name ist {agent_name}."),
         *cleaned_messages
     ]
 
+    logger.debug(f"Agent A: {len(messages)} Nachrichten im Kontext")
+
     full_response = ""
-    async for chunk in llm.astream(messages):
-        if chunk.content:
-            full_response += chunk.content
-            yield (chunk.content, False)
+    try:
+        async for chunk in llm.astream(messages):
+            if chunk.content:
+                full_response += chunk.content
+                yield (chunk.content, False)
+    except Exception as e:
+        logger.error(f"Agent A Streaming-Fehler: {e}")
+        raise
+
+    if not full_response:
+        logger.warning(f"Agent A: Leere Antwort erhalten!")
 
     yield (full_response, True)
 
@@ -145,27 +162,62 @@ async def agent_b_node_streaming(
     system_prompt = config.get("prompt") or DEFAULT_AGENT_B_PROMPT
     agent_name = config.get("name", "Agent B")
 
-    # Strip any trailing whitespace from previous messages to avoid API errors
+    # Konvertiere Nachrichten: Agent B's eigene = AIMessage, andere = HumanMessage
     cleaned_messages = []
     for msg in state["messages"]:
         content = msg.content.rstrip() if hasattr(msg, 'content') else ""
-        if isinstance(msg, AIMessage):
-            cleaned_messages.append(AIMessage(content=content, name=getattr(msg, 'name', None)))
-        elif isinstance(msg, HumanMessage):
-            cleaned_messages.append(HumanMessage(content=content, name=getattr(msg, 'name', None)))
+        msg_name = getattr(msg, 'name', None)
+
+        # Agent B's eigene Nachrichten bleiben AIMessage
+        if msg_name == "agent_b":
+            cleaned_messages.append(AIMessage(content=content, name=msg_name))
+        # Alle anderen (agent_a, mediator, system) werden HumanMessage
+        elif isinstance(msg, AIMessage):
+            cleaned_messages.append(HumanMessage(content=content, name=msg_name))
         else:
-            cleaned_messages.append(msg)
+            cleaned_messages.append(HumanMessage(content=content, name=msg_name))
 
     messages = [
         SystemMessage(content=f"{system_prompt}\n\nDein Name ist {agent_name}."),
         *cleaned_messages
     ]
 
+    logger.debug(f"Agent B: {len(messages)} Nachrichten im Kontext")
+    logger.debug(f"Agent B: Name={agent_name}, Prompt={system_prompt[:100]}...")
+    # Log ALLE Nachrichten für Debugging
+    for i, msg in enumerate(messages):
+        msg_type = type(msg).__name__
+        content_preview = msg.content[:80].replace('\n', ' ') if msg.content else 'LEER'
+        logger.debug(f"Agent B Msg[{i}] ({msg_type}): {content_preview}...")
+
     full_response = ""
-    async for chunk in llm.astream(messages):
-        if chunk.content:
-            full_response += chunk.content
-            yield (chunk.content, False)
+    chunk_count = 0
+    try:
+        async for chunk in llm.astream(messages):
+            chunk_count += 1
+            # Log jeden Chunk mit repr() um Whitespace zu sehen
+            logger.debug(f"Agent B Chunk {chunk_count}: content={repr(chunk.content)}, metadata={chunk.response_metadata}")
+            if chunk.content:
+                full_response += chunk.content
+                yield (chunk.content, False)
+    except Exception as e:
+        logger.error(f"Agent B Streaming-Fehler: {e}")
+        raise
+
+    logger.debug(f"Agent B: {chunk_count} Chunks empfangen, full_response={repr(full_response[:200]) if full_response else 'LEER'}")
+
+    if not full_response:
+        logger.warning(f"Agent B: Leere Antwort! Versuche non-streaming...")
+        # Fallback: Non-streaming um Fehler zu sehen
+        try:
+            non_stream_llm = get_agent_llm(streaming=False)
+            response = await non_stream_llm.ainvoke(messages)
+            logger.info(f"Agent B Non-Stream Response: {repr(response.content[:200]) if response.content else 'AUCH LEER'}")
+            if response.content:
+                full_response = response.content
+                yield (full_response, False)
+        except Exception as e:
+            logger.error(f"Agent B Non-Stream Fehler: {e}")
 
     yield (full_response, True)
 
