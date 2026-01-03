@@ -58,31 +58,3 @@ struct AgentConfig: Codable, Equatable, Identifiable {
         """
     )
 }
-
-/// Ein vordefiniertes Szenario
-struct Scenario: Codable, Identifiable {
-    let id: String
-    let name: String
-    let description: String
-    let agentA: ScenarioAgent
-    let agentB: ScenarioAgent
-    let scenario: String
-
-    struct ScenarioAgent: Codable {
-        let name: String
-        let prompt: String?
-    }
-
-    /// Erstellt AgentConfigs aus dem Szenario
-    func toAgentConfigs() -> (AgentConfig, AgentConfig) {
-        let agentAConfig = AgentConfig(
-            name: agentA.name,
-            prompt: agentA.prompt ?? AgentConfig.defaultAgentA.prompt
-        )
-        let agentBConfig = AgentConfig(
-            name: agentB.name,
-            prompt: agentB.prompt ?? AgentConfig.defaultAgentB.prompt
-        )
-        return (agentAConfig, agentBConfig)
-    }
-}

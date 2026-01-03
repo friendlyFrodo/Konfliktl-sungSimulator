@@ -165,86 +165,8 @@ struct NewSessionSheet: View {
     let onStart: () -> Void
     let onCancel: () -> Void
 
-    // Presets mit vollständigen Agent-Konfigurationen
-    struct ScenarioPreset {
-        let name: String
-        let scenario: String
-        let agentA: AgentConfig
-        let agentB: AgentConfig
-    }
-
-    var presetScenarios: [ScenarioPreset] {
-        [
-            ScenarioPreset(
-                name: "Arbeitsplatz",
-                scenario: """
-Maria (42, Senior Projektmanagerin) und Stefan (35, ambitionierter Projektmitarbeiter) arbeiten seit 2 Jahren im selben Team. \
-Letzte Woche hat Stefan dem Abteilungsleiter eine innovative Lösung für das aktuelle Kundenprojekt präsentiert - ohne Maria vorher einzuweihen. \
-Die Idee wurde gut aufgenommen, und der Chef lobte Stefan öffentlich. Maria fühlt sich übergangen und hinterfragt Stefans Loyalität. \
-Stefan versteht nicht, warum Maria so reagiert - er wollte doch nur Initiative zeigen. Beide treffen sich jetzt zum Klärungsgespräch.
-""",
-                agentA: AgentConfig(
-                    name: "Maria",
-                    prompt: "Du bist Maria, 42 Jahre, Senior Projektmanagerin mit 15 Jahren Berufserfahrung. Du bist direkt, professionell und erwartest Respekt für deine Position. Du fühlst dich von Stefan hintergangen und bist enttäuscht über seinen Vertrauensbruch."
-                ),
-                agentB: AgentConfig(
-                    name: "Stefan",
-                    prompt: "Du bist Stefan, 35 Jahre, ambitionierter Projektmitarbeiter der Karriere machen will. Du bist ehrgeizig, manchmal ungeduldig und verstehst nicht, warum Maria so reagiert. Du wolltest Initiative zeigen und siehst dich zu Unrecht kritisiert."
-                )
-            ),
-            ScenarioPreset(
-                name: "Paar-Konflikt",
-                scenario: """
-Lisa (34, Vollzeit-Marketingmanagerin) und Thomas (36, Softwareentwickler mit flexiblen Arbeitszeiten) sind seit 5 Jahren zusammen und wohnen seit 3 Jahren in einer gemeinsamen Wohnung. \
-Lisa kommt jeden Abend erschöpft nach Hause und findet regelmäßig unerledigte Hausarbeit vor, während Thomas am PC sitzt. \
-Sie hat das Gefühl, dass sie neben ihrem anspruchsvollen Job auch noch den gesamten Haushalt managt. \
-Thomas findet, dass er seinen fairen Anteil beiträgt und Lisa übertreibt. Heute Abend eskaliert der Streit nach einem besonders stressigen Tag.
-""",
-                agentA: AgentConfig(
-                    name: "Lisa",
-                    prompt: "Du bist Lisa, 34 Jahre alt, Vollzeit-Marketingmanagerin. Du bist emotional, fühlst dich oft ungerecht behandelt und überlastet. Du kommst erschöpft nach Hause und hast das Gefühl, alles alleine machen zu müssen. Du reagierst schnell defensiv und verwendest oft Vorwürfe."
-                ),
-                agentB: AgentConfig(
-                    name: "Thomas",
-                    prompt: "Du bist Thomas, 36 Jahre alt, Softwareentwickler mit flexiblen Arbeitszeiten. Du bist rational, analytisch und verstehst nicht, warum Lisa so emotional reagiert. Du findest, du trägst deinen fairen Anteil bei und sie übertreibt. Du wirst sarkastisch wenn du frustriert bist."
-                )
-            ),
-            ScenarioPreset(
-                name: "Familie",
-                scenario: """
-Markus (28) hat gerade seiner Mutter Renate (58) eröffnet, dass er seinen gut bezahlten IT-Job bei einem DAX-Konzern gekündigt hat, um Vollzeit als freischaffender Künstler zu arbeiten. \
-Renate, die selbst hart gearbeitet hat, um Markus das Studium zu ermöglichen, ist schockiert. Sie macht sich Sorgen um seine finanzielle Zukunft und Altersvorsorge. \
-Markus fühlt sich seit Jahren in seinem Job gefangen und hat endlich den Mut gefunden, seinen Traum zu verfolgen. \
-Er hat 6 Monate Ersparnisse und erste Aufträge. Das Gespräch findet bei Kaffee und Kuchen in Renates Wohnzimmer statt.
-""",
-                agentA: AgentConfig(
-                    name: "Renate",
-                    prompt: "Du bist Renate, 58 Jahre, Mutter von Markus. Du hast hart gearbeitet um deinem Sohn das Studium zu ermöglichen. Du machst dir große Sorgen um seine finanzielle Zukunft und Altersvorsorge. Du verstehst nicht, warum er einen sicheren Job aufgibt. Du bist enttäuscht und besorgt zugleich."
-                ),
-                agentB: AgentConfig(
-                    name: "Markus",
-                    prompt: "Du bist Markus, 28 Jahre, hast deinen IT-Job gekündigt um Künstler zu werden. Du fühlst dich seit Jahren im Job gefangen und hast endlich den Mut gefunden, deinen Traum zu verfolgen. Du hast 6 Monate Ersparnisse und erste Aufträge. Du wünschst dir Unterstützung von deiner Mutter."
-                )
-            ),
-            ScenarioPreset(
-                name: "WG",
-                scenario: """
-Alex (24, Masterstudent im letzten Semester) und Kim (23, Remote-Mitarbeiter bei einem Startup) teilen sich seit 8 Monaten eine 2-Zimmer-Wohnung. \
-Alex schreibt gerade unter Hochdruck seine Masterarbeit und arbeitet oft bis 4 Uhr morgens, um tagsüber Ruhe zum Schlafen zu finden. \
-Kim arbeitet flexible Stunden und macht gerne laute Musik beim Arbeiten, hat häufig spontan Freunde zu Besuch. \
-Es ist Sonntagmittag, Alex wurde zum dritten Mal diese Woche von Kims Musik geweckt. Die Abgabe ist in 2 Wochen.
-""",
-                agentA: AgentConfig(
-                    name: "Alex",
-                    prompt: "Du bist Alex, 24 Jahre, Masterstudent im letzten Semester. Du schreibst unter Hochdruck deine Masterarbeit, die Abgabe ist in 2 Wochen. Du arbeitest nachts und brauchst tagsüber Ruhe zum Schlafen. Du bist gestresst, übermüdet und am Limit. Du wurdest gerade wieder von Kims Musik geweckt."
-                ),
-                agentB: AgentConfig(
-                    name: "Kim",
-                    prompt: "Du bist Kim, 23 Jahre, Remote-Mitarbeiter bei einem Startup. Du arbeitest flexible Stunden und brauchst Musik zum Arbeiten. Du hast ein aktives Sozialleben und lädst gerne Freunde ein. Du findest Alex übertreibt und sollte sich besser organisieren."
-                )
-            ),
-        ]
-    }
+    // Szenarien aus der Datenbank
+    @StateObject private var scenarioService = ScenarioService.shared
 
     var body: some View {
         NavigationStack {
@@ -272,12 +194,22 @@ Es ist Sonntagmittag, Alex wurde zum dritten Mal diese Woche von Kims Musik gewe
 
                 // Szenario
                 Section("Szenario") {
-                    Menu("Preset auswählen") {
-                        ForEach(presetScenarios, id: \.name) { preset in
-                            Button(preset.name) {
-                                scenarioText = preset.scenario
-                                agentAConfig = preset.agentA
-                                agentBConfig = preset.agentB
+                    if scenarioService.isLoading {
+                        ProgressView("Lade Szenarien...")
+                    } else {
+                        Menu("Szenario auswählen") {
+                            ForEach(scenarioService.scenarios) { scenario in
+                                Button {
+                                    selectScenario(scenario)
+                                } label: {
+                                    HStack {
+                                        Text(scenario.name)
+                                        if scenario.isPreset {
+                                            Text("(Preset)")
+                                                .foregroundColor(.secondary)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -307,7 +239,21 @@ Es ist Sonntagmittag, Alex wurde zum dritten Mal diese Woche von Kims Musik gewe
                 }
             }
             .navigationTitle("Neue Session")
+            .task {
+                // Szenarien beim Öffnen laden
+                await scenarioService.fetchScenarios()
+                // Erstes Szenario automatisch auswählen falls vorhanden
+                if let firstScenario = scenarioService.scenarios.first {
+                    selectScenario(firstScenario)
+                }
+            }
         }
+    }
+
+    private func selectScenario(_ scenario: Scenario) {
+        scenarioText = scenario.scenarioText
+        agentAConfig = scenario.toAgentAConfig()
+        agentBConfig = scenario.toAgentBConfig()
     }
 }
 

@@ -125,3 +125,48 @@ class InterruptedResponse(BaseModel):
     type: Literal["interrupted"] = "interrupted"
     session_id: str
     message: str = "Session unterbrochen - Du kannst jetzt eingreifen"
+
+
+# === Scenario REST API Schemas ===
+
+class ScenarioCreate(BaseModel):
+    """Request zum Erstellen eines neuen Szenarios."""
+    name: str
+    scenario_text: str
+    agent_a_name: str
+    agent_a_prompt: str
+    agent_b_name: str
+    agent_b_prompt: str
+
+
+class ScenarioUpdate(BaseModel):
+    """Request zum Aktualisieren eines Szenarios."""
+    name: Optional[str] = None
+    scenario_text: Optional[str] = None
+    agent_a_name: Optional[str] = None
+    agent_a_prompt: Optional[str] = None
+    agent_b_name: Optional[str] = None
+    agent_b_prompt: Optional[str] = None
+
+
+class ScenarioResponse(BaseModel):
+    """Response für ein Szenario."""
+    id: str
+    name: str
+    scenario_text: str
+    agent_a_name: str
+    agent_a_prompt: str
+    agent_b_name: str
+    agent_b_prompt: str
+    is_preset: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ScenarioListResponse(BaseModel):
+    """Response für Liste von Szenarien."""
+    scenarios: list[ScenarioResponse]
+    total: int

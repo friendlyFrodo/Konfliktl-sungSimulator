@@ -10,44 +10,55 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        Form {
-            Section("Server-Verbindung") {
-                TextField("WebSocket URL", text: $serverURL)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Button("Verbindung testen") {
-                        testConnection()
-                    }
-
-                    Spacer()
-
-                    switch testConnectionStatus {
-                    case .idle:
-                        EmptyView()
-                    case .testing:
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    case .success:
-                        Label("Verbunden", systemImage: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                    case .failed(let error):
-                        Label(error, systemImage: "xmark.circle.fill")
-                            .foregroundColor(.red)
-                            .font(.caption)
+        NavigationStack {
+            Form {
+                // Szenarien-Verwaltung
+                Section("Szenarien") {
+                    NavigationLink {
+                        ScenarioManagerView()
+                    } label: {
+                        Label("Szenarien verwalten", systemImage: "doc.text.magnifyingglass")
                     }
                 }
-            }
 
-            Section("Info") {
-                LabeledContent("Version", value: "0.1.0")
-                LabeledContent("Backend", value: "Python + LangGraph")
-                LabeledContent("LLM", value: "Claude (Anthropic)")
+                Section("Server-Verbindung") {
+                    TextField("WebSocket URL", text: $serverURL)
+                        .textFieldStyle(.roundedBorder)
+
+                    HStack {
+                        Button("Verbindung testen") {
+                            testConnection()
+                        }
+
+                        Spacer()
+
+                        switch testConnectionStatus {
+                        case .idle:
+                            EmptyView()
+                        case .testing:
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        case .success:
+                            Label("Verbunden", systemImage: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                        case .failed(let error):
+                            Label(error, systemImage: "xmark.circle.fill")
+                                .foregroundColor(.red)
+                                .font(.caption)
+                        }
+                    }
+                }
+
+                Section("Info") {
+                    LabeledContent("Version", value: "0.2.0")
+                    LabeledContent("Backend", value: "Python + LangGraph")
+                    LabeledContent("LLM", value: "Claude (Anthropic)")
+                }
             }
+            .formStyle(.grouped)
+            .frame(minWidth: 450, minHeight: 400)
+            .navigationTitle("Einstellungen")
         }
-        .formStyle(.grouped)
-        .frame(width: 400)
-        .padding()
     }
 
     private func testConnection() {
