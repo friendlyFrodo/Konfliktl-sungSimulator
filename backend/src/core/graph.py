@@ -15,7 +15,7 @@ from .agents import (
     agent_b_node_streaming,
     evaluator_node_streaming,
 )
-from .router import route_next_speaker, should_continue, determine_expected_role
+from .router import route_next_speaker, should_continue, determine_expected_role, smart_route_next_speaker
 
 
 class ConflictSimulator:
@@ -274,8 +274,8 @@ class ConflictSimulator:
                     "content": f"{agent_name}: {full_content}",
                 }
 
-            # Nächsten Sprecher bestimmen
-            next_speaker = route_next_speaker(state)
+            # Nächsten Sprecher bestimmen (mit intelligentem LLM-Routing)
+            next_speaker = await smart_route_next_speaker(state)
             state["next_speaker"] = next_speaker
 
         # Evaluator mit Streaming

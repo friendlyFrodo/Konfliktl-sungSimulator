@@ -1,12 +1,29 @@
 """Router-Logik für die LangGraph State Machine.
 
 Entscheidet, wer als nächstes sprechen soll.
+Verwendet Haiku für intelligente Routing-Entscheidungen.
 """
 
 from typing import Literal
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from .state import SimulationState
+from .agents import get_router_llm
+
+
+ROUTER_SYSTEM_PROMPT = """Du bist ein Konflikt-Routing-System. Analysiere die letzten Nachrichten und entscheide, was als nächstes passieren soll.
+
+Antworte NUR mit einem der folgenden Wörter:
+- AGENT_A: Wenn Agent A antworten soll (z.B. wenn B eine direkte Frage/Aussage an A macht)
+- AGENT_B: Wenn Agent B antworten soll (z.B. wenn A eine direkte Frage/Aussage an B macht)
+- HUMAN: Wenn der Mediator/User eingreifen sollte (z.B. bei Eskalation, Sackgasse, oder wenn jemand weint/aufgibt)
+- EVALUATOR: Wenn das Gespräch beendet werden sollte (z.B. bei Einigung oder totaler Eskalation)
+
+Entscheide basierend auf:
+1. Wer wurde direkt angesprochen?
+2. Ist das Gespräch eskaliert und braucht Intervention?
+3. Gibt es einen Durchbruch oder eine Sackgasse?
+"""
 
 
 def route_next_speaker(state: SimulationState) -> Literal["agent_a", "agent_b", "human", "evaluator", "end"]:
@@ -126,3 +143,70 @@ def determine_expected_role(state: SimulationState) -> Literal["mediator", "agen
             return "agent_b"
 
     return "mediator"
+
+
+async def smart_route_next_speaker(state: SimulationState) -> Literal["agent_a", "agent_b", "human", "evaluator"]:
+    """Intelligentes Routing mit Haiku LLM.
+
+    Analysiert die letzten Nachrichten und entscheidet basierend auf
+    Kontext und Dynamik, wer als nächstes sprechen soll.
+
+    Args:
+        state: Aktueller State der Simulation
+
+    Returns:
+        Der nächste Sprecher
+    """
+    # Schnelle Checks zuerst
+    if state.get("should_stop", False):
+        return "evaluator"
+
+    messages = state.get("messages", [])
+    if len(messages) < 2:
+        return "agent_a"  # Am Anfang einfach abwechseln
+
+    # Letzte 4 Nachrichten für Kontext
+    recent_messages = messages[-4:]
+    context = "\n".join([
+        f"{getattr(msg, 'name', 'unknown')}: {msg.content[:200]}"
+        for msg in recent_messages
+    ])
+
+    agent_a_name = state["agent_a_config"].get("name", "Agent A")
+    agent_b_name = state["agent_b_config"].get("name", "Agent B")
+
+    prompt = f"""
+Agent A ist: {agent_a_name}
+Agent B ist: {agent_b_name}
+Aktueller Turn: {state.get('turns', 0)}
+
+Letzte Nachrichten:
+{context}
+
+Wer soll als nächstes sprechen?
+"""
+
+    try:
+        llm = get_router_llm()
+        response = await llm.ainvoke([
+            SystemMessage(content=ROUTER_SYSTEM_PROMPT),
+            HumanMessage(content=prompt)
+        ])
+
+        decision = response.content.strip().upper()
+
+        if "AGENT_A" in decision:
+            return "agent_a"
+        elif "AGENT_B" in decision:
+            return "agent_b"
+        elif "HUMAN" in decision:
+            return "human"
+        elif "EVALUATOR" in decision:
+            return "evaluator"
+        else:
+            # Fallback auf einfache Logik
+            return route_next_speaker(state)
+
+    except Exception as e:
+        print(f"[Router] LLM-Fehler, Fallback auf Regellogik: {e}")
+        return route_next_speaker(state)

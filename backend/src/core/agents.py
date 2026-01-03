@@ -11,6 +11,12 @@ from .state import SimulationState
 # Prompts laden
 PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
+# Modell-Konfiguration
+# Sonnet 4.5 für Roleplay-Agenten (besseres Deutsch, menschlicher)
+AGENT_MODEL = "claude-sonnet-4-5-20250514"
+# Haiku für Router-Entscheidungen (schneller, günstiger, logischer)
+ROUTER_MODEL = "claude-3-5-haiku-20241022"
+
 
 def load_prompt(filename: str) -> str:
     """Lädt einen Prompt aus einer Datei."""
@@ -25,19 +31,29 @@ DEFAULT_AGENT_B_PROMPT = load_prompt("agent_b_default.txt")
 EVALUATOR_PROMPT = load_prompt("evaluator.txt")
 
 
-def get_llm(streaming: bool = True) -> ChatAnthropic:
-    """Erstellt eine Claude-Instanz."""
+def get_agent_llm(streaming: bool = True) -> ChatAnthropic:
+    """Erstellt eine Claude-Instanz für Roleplay-Agenten (Sonnet 4.5)."""
     return ChatAnthropic(
-        model="claude-sonnet-4-20250514",
+        model=AGENT_MODEL,
         temperature=0.7,
         streaming=streaming,
         api_key=os.getenv("ANTHROPIC_API_KEY"),
     )
 
 
+def get_router_llm() -> ChatAnthropic:
+    """Erstellt eine Claude-Instanz für Router-Entscheidungen (Haiku)."""
+    return ChatAnthropic(
+        model=ROUTER_MODEL,
+        temperature=0.0,  # Deterministischer für Routing
+        streaming=False,
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+    )
+
+
 async def agent_a_node(state: SimulationState) -> dict:
     """Node für Agent A."""
-    llm = get_llm(streaming=False)
+    llm = get_agent_llm(streaming=False)
 
     config = state["agent_a_config"]
     system_prompt = config.get("prompt") or DEFAULT_AGENT_A_PROMPT
@@ -66,7 +82,7 @@ async def agent_a_node_streaming(
     Yields:
         Tuple von (chunk, is_final)
     """
-    llm = get_llm(streaming=True)
+    llm = get_agent_llm(streaming=True)
 
     config = state["agent_a_config"]
     system_prompt = config.get("prompt") or DEFAULT_AGENT_A_PROMPT
@@ -88,7 +104,7 @@ async def agent_a_node_streaming(
 
 async def agent_b_node(state: SimulationState) -> dict:
     """Node für Agent B."""
-    llm = get_llm(streaming=False)
+    llm = get_agent_llm(streaming=False)
 
     config = state["agent_b_config"]
     system_prompt = config.get("prompt") or DEFAULT_AGENT_B_PROMPT
@@ -112,7 +128,7 @@ async def agent_b_node_streaming(
     state: SimulationState,
 ) -> AsyncIterator[tuple[str, bool]]:
     """Streaming-Version von Agent B Node."""
-    llm = get_llm(streaming=True)
+    llm = get_agent_llm(streaming=True)
 
     config = state["agent_b_config"]
     system_prompt = config.get("prompt") or DEFAULT_AGENT_B_PROMPT
@@ -134,7 +150,7 @@ async def agent_b_node_streaming(
 
 async def evaluator_node(state: SimulationState) -> dict:
     """Evaluator Node für Coach-Feedback."""
-    llm = get_llm(streaming=False)
+    llm = get_agent_llm(streaming=False)
 
     agent_a_name = state["agent_a_config"].get("name", "Agent A")
     agent_b_name = state["agent_b_config"].get("name", "Agent B")
@@ -170,7 +186,7 @@ async def evaluator_node_streaming(
     state: SimulationState,
 ) -> AsyncIterator[tuple[str, bool]]:
     """Streaming-Version des Evaluator Node."""
-    llm = get_llm(streaming=True)
+    llm = get_agent_llm(streaming=True)
 
     agent_a_name = state["agent_a_config"].get("name", "Agent A")
     agent_b_name = state["agent_b_config"].get("name", "Agent B")
