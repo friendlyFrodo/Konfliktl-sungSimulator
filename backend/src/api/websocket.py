@@ -15,6 +15,7 @@ from ..models.schemas import (
     StopMessage,
     RequestEvaluationMessage,
     InterruptMessage,
+    AnalyzeMessageRequest,
     AgentMessageResponse,
     StreamingChunkResponse,
     WaitingForInputResponse,
@@ -22,7 +23,9 @@ from ..models.schemas import (
     SessionStartedResponse,
     ErrorResponse,
     InterruptedResponse,
+    MessageAnalysisResponse,
 )
+from ..core.agents import analyze_single_message
 
 # Logging
 logger = logging.getLogger("konflikt.websocket")
@@ -86,6 +89,9 @@ async def handle_websocket_message(
 
         elif msg_type == "interrupt":
             await handle_interrupt(websocket, client_id, message)
+
+        elif msg_type == "analyze_message":
+            await handle_analyze_message(websocket, client_id, message)
 
         else:
             logger.warning(f"[{client_id[:8]}] ⚠️ Unbekannter Nachrichtentyp: {msg_type}")
@@ -273,6 +279,44 @@ async def handle_interrupt(
         logger.error(f"[{client_id[:8]}] ❌ Interrupt-Fehler: {e}")
         await websocket.send_json(
             ErrorResponse(message=f"Failed to interrupt: {str(e)}").model_dump()
+        )
+
+
+async def handle_analyze_message(
+    websocket: WebSocket,
+    client_id: str,
+    message: dict,
+):
+    """Analysiert eine einzelne Nachricht (Experten-Modus)."""
+    try:
+        msg = AnalyzeMessageRequest(**message)
+        logger.info(f"[{client_id[:8]}] 🔍 Analyse angefordert für {msg.message_agent}")
+
+        # Analyse durchführen
+        analysis = await analyze_single_message(
+            message_content=msg.message_content,
+            message_agent=msg.message_agent,
+            agent_name=msg.agent_name,
+            conversation_context=msg.conversation_context,
+        )
+
+        # Analyse-Typ bestimmen
+        analysis_type = "mediator" if msg.message_agent == "mediator" else "party"
+
+        # Antwort senden
+        response = MessageAnalysisResponse(
+            message_id=msg.message_id,
+            analysis=analysis,
+            analysis_type=analysis_type,
+        )
+        await websocket.send_json(response.model_dump())
+
+        logger.info(f"[{client_id[:8]}] ✅ Analyse gesendet ({len(analysis)} Zeichen)")
+
+    except Exception as e:
+        logger.error(f"[{client_id[:8]}] ❌ Analyse-Fehler: {e}")
+        await websocket.send_json(
+            ErrorResponse(message=f"Failed to analyze message: {str(e)}").model_dump()
         )
 
 

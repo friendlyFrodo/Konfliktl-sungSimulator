@@ -33,6 +33,8 @@ def load_prompt(filename: str) -> str:
 DEFAULT_AGENT_A_PROMPT = load_prompt("agent_a_default.txt")
 DEFAULT_AGENT_B_PROMPT = load_prompt("agent_b_default.txt")
 EVALUATOR_PROMPT = load_prompt("evaluator.txt")
+ANALYZE_PARTY_PROMPT = load_prompt("analyze_party.txt")
+ANALYZE_MEDIATOR_PROMPT = load_prompt("analyze_mediator.txt")
 
 
 def get_agent_llm(streaming: bool = True) -> ChatAnthropic:
@@ -311,3 +313,73 @@ Analysiere den folgenden Gesprächsverlauf und gib strukturiertes Feedback.
             yield (full_response, False)
 
     yield (full_response, True)
+
+
+async def analyze_single_message(
+    message_content: str,
+    message_agent: str,  # "agent_a", "agent_b", "mediator"
+    agent_name: str,
+    conversation_context: list[dict],
+) -> str:
+    """Analysiert eine einzelne Nachricht für den Experten-Modus.
+
+    Args:
+        message_content: Inhalt der zu analysierenden Nachricht
+        message_agent: Typ des Agenten (agent_a, agent_b, mediator)
+        agent_name: Name des Agenten (z.B. "Lisa", "Thomas", "Mediator")
+        conversation_context: Vorherige Nachrichten für Kontext
+
+    Returns:
+        Analyse-Text
+    """
+    # Haiku für schnelle Analyse
+    llm = ChatAnthropic(
+        model="claude-3-5-haiku-20241022",
+        temperature=0.3,
+        streaming=False,
+        api_key=os.getenv("ANTHROPIC_API_KEY"),
+    )
+
+    # Kontext aufbauen
+    context_text = ""
+    if conversation_context:
+        context_lines = []
+        for msg in conversation_context[-5:]:  # Letzte 5 Nachrichten für Kontext
+            context_lines.append(f"[{msg.get('agent_name', 'Unknown')}]: {msg.get('content', '')}")
+        context_text = "\n".join(context_lines)
+
+    # Prompt basierend auf Agent-Typ wählen
+    if message_agent == "mediator":
+        system_prompt = ANALYZE_MEDIATOR_PROMPT
+        user_prompt = f"""Analysiere diese Mediator-Intervention:
+
+### Gesprächskontext (vorherige Nachrichten):
+{context_text}
+
+### Zu analysierende Mediator-Intervention:
+[Mediator]: {message_content}
+
+Bitte gib deine Analyse."""
+    else:
+        system_prompt = ANALYZE_PARTY_PROMPT
+        user_prompt = f"""Analysiere diese Aussage von {agent_name}:
+
+### Gesprächskontext (vorherige Nachrichten):
+{context_text}
+
+### Zu analysierende Aussage:
+[{agent_name}]: {message_content}
+
+Bitte gib deine Analyse."""
+
+    messages = [
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=user_prompt),
+    ]
+
+    try:
+        response = await llm.ainvoke(messages)
+        return response.content.strip()
+    except Exception as e:
+        logger.error(f"Analyse-Fehler: {e}")
+        return f"Analyse konnte nicht erstellt werden: {e}"

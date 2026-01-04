@@ -55,6 +55,18 @@ class InterruptMessage(BaseModel):
     session_id: str
 
 
+class AnalyzeMessageRequest(BaseModel):
+    """Anfrage zur Analyse einer einzelnen Nachricht."""
+    type: Literal["analyze_message"] = "analyze_message"
+    session_id: str
+    message_id: str  # UUID der zu analysierenden Nachricht
+    message_content: str
+    message_agent: Literal["agent_a", "agent_b", "mediator"]
+    agent_name: str
+    # Kontext: vorherige Nachrichten für bessere Analyse
+    conversation_context: list[dict]  # [{agent, agent_name, content}, ...]
+
+
 # === Server -> Client Messages ===
 
 class AgentMessageResponse(BaseModel):
@@ -125,6 +137,14 @@ class InterruptedResponse(BaseModel):
     type: Literal["interrupted"] = "interrupted"
     session_id: str
     message: str = "Session unterbrochen - Du kannst jetzt eingreifen"
+
+
+class MessageAnalysisResponse(BaseModel):
+    """Analyse einer einzelnen Nachricht."""
+    type: Literal["message_analysis"] = "message_analysis"
+    message_id: str
+    analysis: str
+    analysis_type: Literal["party", "mediator"]  # Welche Art von Analyse
 
 
 # === Scenario REST API Schemas ===

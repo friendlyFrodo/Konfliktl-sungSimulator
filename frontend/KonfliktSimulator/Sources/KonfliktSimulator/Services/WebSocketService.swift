@@ -136,6 +136,26 @@ class WebSocketService: NSObject, ObservableObject {
         sendJSON(request)
     }
 
+    /// Einzelne Nachricht analysieren (Experten-Modus)
+    func analyzeMessage(
+        sessionId: String,
+        messageId: String,
+        messageContent: String,
+        messageAgent: String,
+        agentName: String,
+        conversationContext: [[String: String]]
+    ) {
+        let request = ClientMessage.AnalyzeMessageRequest(
+            sessionId: sessionId,
+            messageId: messageId,
+            messageContent: messageContent,
+            messageAgent: messageAgent,
+            agentName: agentName,
+            conversationContext: conversationContext
+        )
+        sendJSON(request)
+    }
+
     // MARK: - Private Methods
 
     private func sendJSON<T: Encodable>(_ object: T) {

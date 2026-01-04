@@ -39,6 +39,7 @@ enum ClientMessage: Codable {
     case stop(StopRequest)
     case requestEvaluation(EvaluationRequest)
     case interrupt(InterruptRequest)
+    case analyzeMessage(AnalyzeMessageRequest)
 
     struct StartSessionRequest: Codable {
         let type = "start_session"
@@ -116,6 +117,27 @@ enum ClientMessage: Codable {
             case sessionId = "session_id"
         }
     }
+
+    /// Anfrage zur Analyse einer einzelnen Nachricht (Experten-Modus)
+    struct AnalyzeMessageRequest: Codable {
+        let type = "analyze_message"
+        let sessionId: String
+        let messageId: String
+        let messageContent: String
+        let messageAgent: String  // "agent_a", "agent_b", "mediator"
+        let agentName: String
+        let conversationContext: [[String: String]]
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case sessionId = "session_id"
+            case messageId = "message_id"
+            case messageContent = "message_content"
+            case messageAgent = "message_agent"
+            case agentName = "agent_name"
+            case conversationContext = "conversation_context"
+        }
+    }
 }
 
 /// Nachrichten vom Server zum Client
@@ -128,6 +150,7 @@ enum ServerMessage: Decodable {
     case waitingForDecision(WaitingForDecisionResponse)
     case evaluation(EvaluationResponse)
     case interrupted(InterruptedResponse)
+    case messageAnalysis(MessageAnalysisResponse)
     case error(ErrorResponse)
 
     struct SessionStartedResponse: Decodable {
@@ -250,6 +273,21 @@ enum ServerMessage: Decodable {
         }
     }
 
+    /// Analyse einer einzelnen Nachricht (Experten-Modus)
+    struct MessageAnalysisResponse: Decodable {
+        let type: String
+        let messageId: String
+        let analysis: String
+        let analysisType: String  // "party" oder "mediator"
+
+        enum CodingKeys: String, CodingKey {
+            case type
+            case messageId = "message_id"
+            case analysis
+            case analysisType = "analysis_type"
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case type
     }
@@ -277,6 +315,8 @@ enum ServerMessage: Decodable {
             self = .evaluation(try singleContainer.decode(EvaluationResponse.self))
         case "interrupted":
             self = .interrupted(try singleContainer.decode(InterruptedResponse.self))
+        case "message_analysis":
+            self = .messageAnalysis(try singleContainer.decode(MessageAnalysisResponse.self))
         case "error":
             self = .error(try singleContainer.decode(ErrorResponse.self))
         default:

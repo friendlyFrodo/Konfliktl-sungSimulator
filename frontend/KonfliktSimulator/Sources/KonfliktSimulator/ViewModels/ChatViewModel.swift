@@ -29,6 +29,10 @@ class ChatViewModel: ObservableObject {
     // Connection status (forwarded from WebSocketService)
     @Published var isConnected: Bool = false
 
+    // Experten-Modus: Nachrichten-Analysen
+    @Published var messageAnalyses: [UUID: String] = [:]
+    @Published var analysisLoading: UUID? = nil
+
     // MARK: - Services
 
     let webSocketService: WebSocketService
@@ -160,6 +164,73 @@ class ChatViewModel: ObservableObject {
         webSocketService.stopSession(sessionId: sessionId)
     }
 
+    /// Experten-Analyse für eine Nachricht anfordern
+    func analyzeMessage(_ message: Message) {
+        guard let sessionId = currentSessionId else { return }
+
+        // Bereits geladen oder am Laden?
+        if messageAnalyses[message.id] != nil || analysisLoading == message.id {
+            return
+        }
+
+        analysisLoading = message.id
+
+        // Agent-Typ bestimmen
+        let messageAgent: String
+        switch message.agent {
+        case .agentA:
+            messageAgent = "agent_a"
+        case .agentB:
+            messageAgent = "agent_b"
+        case .user, .mediator:
+            messageAgent = "mediator"
+        case .evaluator:
+            return // Keine Analyse für Evaluator
+        }
+
+        // Konversationskontext aufbauen (letzte Nachrichten vor dieser)
+        var context: [[String: String]] = []
+        for msg in messages {
+            if msg.id == message.id { break }
+            let agentType: String
+            switch msg.agent {
+            case .agentA: agentType = "agent_a"
+            case .agentB: agentType = "agent_b"
+            case .user, .mediator: agentType = "mediator"
+            case .evaluator: continue
+            }
+            context.append([
+                "agent": agentType,
+                "agent_name": msg.agentName,
+                "content": msg.content
+            ])
+        }
+
+        webSocketService.analyzeMessage(
+            sessionId: sessionId,
+            messageId: message.id.uuidString,
+            messageContent: message.content,
+            messageAgent: messageAgent,
+            agentName: message.agentName,
+            conversationContext: context
+        )
+    }
+
+    /// Prüft ob eine Analyse für eine Nachricht verfügbar ist
+    func hasAnalysis(for message: Message) -> Bool {
+        messageAnalyses[message.id] != nil
+    }
+
+    /// Gibt die Analyse für eine Nachricht zurück
+    func analysis(for message: Message) -> String? {
+        messageAnalyses[message.id]
+    }
+
+    /// Prüft ob Analyse gerade geladen wird
+    func isAnalysisLoading(for message: Message) -> Bool {
+        analysisLoading == message.id
+    }
+
     // MARK: - Private Methods
 
     private func setupMessageHandler() {
@@ -285,6 +356,16 @@ class ChatViewModel: ObservableObject {
             errorMessage = response.message
             typingAgent = nil
             typingAgentName = nil
+
+        case .messageAnalysis(let response):
+            // Experten-Analyse empfangen
+            if let uuid = UUID(uuidString: response.messageId) {
+                messageAnalyses[uuid] = response.analysis
+                if analysisLoading == uuid {
+                    analysisLoading = nil
+                }
+                print("🔍 Analyse empfangen für \(response.messageId): \(response.analysis.prefix(50))...")
+            }
         }
     }
 }

@@ -11,13 +11,13 @@ struct ChatView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         ForEach(viewModel.messages) { message in
-                            MessageBubble(message: message)
+                            MessageBubble(message: message, viewModel: viewModel)
                                 .id(message.id)
                         }
 
                         // Streaming Message
                         if let streamingMessage = viewModel.streamingMessage {
-                            MessageBubble(message: streamingMessage)
+                            MessageBubble(message: streamingMessage, viewModel: viewModel, showAnalysisButton: false)
                                 .id("streaming")
                         }
 
@@ -56,6 +56,11 @@ struct ChatView: View {
 /// Eine einzelne Nachricht
 struct MessageBubble: View {
     let message: Message
+    @ObservedObject var viewModel: ChatViewModel
+    var showAnalysisButton: Bool = true
+
+    @State private var showingAnalysis = false
+    @State private var isHovering = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -75,13 +80,36 @@ struct MessageBubble: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(.secondary)
 
-                // Content
-                Text(message.content)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .padding(10)
-                    .background(bubbleColor)
-                    .cornerRadius(12)
+                // Content mit Analysis Button
+                HStack(alignment: .top, spacing: 6) {
+                    Text(message.content)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding(10)
+                        .background(bubbleColor)
+                        .cornerRadius(12)
+
+                    // Expert Analysis Button (nicht für Evaluator)
+                    if showAnalysisButton && !message.isStreaming && message.agent != .evaluator {
+                        AnalysisButton(
+                            message: message,
+                            hasAnalysis: viewModel.hasAnalysis(for: message),
+                            isLoading: viewModel.isAnalysisLoading(for: message),
+                            showingAnalysis: $showingAnalysis
+                        )
+                        .opacity(isHovering || viewModel.hasAnalysis(for: message) ? 1.0 : 0.3)
+                        .popover(isPresented: $showingAnalysis, arrowEdge: .trailing) {
+                            AnalysisView(
+                                message: message,
+                                analysis: viewModel.analysis(for: message),
+                                isLoading: viewModel.isAnalysisLoading(for: message),
+                                onRequestAnalysis: {
+                                    viewModel.analyzeMessage(message)
+                                }
+                            )
+                        }
+                    }
+                }
 
                 // Timestamp
                 if !message.isStreaming {
@@ -94,6 +122,9 @@ struct MessageBubble: View {
             Spacer()
         }
         .opacity(message.isStreaming ? 0.8 : 1.0)
+        .onHover { hovering in
+            isHovering = hovering
+        }
     }
 
     private var avatarColor: Color {

@@ -188,6 +188,22 @@ Analysiere die letzten Nachrichten und entscheide:
 {"type": "continue", "session_id": "uuid"}
 {"type": "stop", "session_id": "uuid"}
 {"type": "request_evaluation", "session_id": "uuid"}
+{"type": "interrupt", "session_id": "uuid"}
+```
+
+#### Analyze Message (Experten-Analyse)
+```json
+{
+  "type": "analyze_message",
+  "session_id": "uuid",
+  "message_id": "uuid",
+  "message_content": "Das stimmt doch gar nicht!",
+  "message_agent": "agent_a",
+  "agent_name": "Lisa",
+  "conversation_context": [
+    {"agent": "agent_b", "agent_name": "Thomas", "content": "Du hörst mir nie zu!"}
+  ]
+}
 ```
 
 ### 4.2 Server → Client Messages
@@ -249,6 +265,16 @@ Analysiere die letzten Nachrichten und entscheide:
   "type": "evaluation",
   "session_id": "uuid",
   "content": "COACH: Analyse des Gesprächs...\n\nBEWERTUNG:\n- Eskalationslevel: 7/10\n..."
+}
+```
+
+#### Message Analysis (Experten-Analyse Antwort)
+```json
+{
+  "type": "message_analysis",
+  "message_id": "uuid",
+  "analysis": "## Was wird gesagt\nLisa bestreitet eine Aussage...\n\n## Was wird NICHT gesagt\n- Konkrete Begründung...",
+  "analysis_type": "party"
 }
 ```
 
@@ -476,6 +502,26 @@ Agenten beschreiben ihre Körpersprache jetzt für den Leser:
 |-------------------|---------------------|
 | *Ich verschränke die Arme* | *Lisa verschränkt die Arme* |
 | *seufze* | *Thomas seufzt* |
+
+### 10.5 Experten-Analyse (Sparkles Icon)
+
+Jede Nachricht hat ein kleines Analyse-Icon (✨). Beim Klick erhält man:
+
+**Für Konfliktparteien (Lisa/Thomas):**
+- Was wird explizit gesagt (Oberflächenebene)
+- Was wird NICHT gesagt (Tiefenebene, verborgene Bedürfnisse)
+- Kommunikationsmuster erkennen
+- Konkrete Hinweise für den Mediator
+
+**Für Mediator-Beiträge:**
+- Identifikation der verwendeten Technik (Harvard, GFK, Glasl, etc.)
+- Bewertung der Intervention
+- Was hätte besser sein können
+- Alternative Formulierungen mit wissenschaftlicher Begründung
+
+**Modell:** Claude Haiku 3.5 für schnelle Analyse (~1-2s Response)
+
+**UI:** Popover erscheint rechts neben der Nachricht mit scrollbarer Analyse.
 
 ---
 
