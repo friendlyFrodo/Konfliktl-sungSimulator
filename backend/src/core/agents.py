@@ -271,35 +271,43 @@ Die Teilnehmer sind:
 - {agent_b_name}
 
 Analysiere den folgenden Gesprächsverlauf und gib strukturiertes Feedback.
-Gib am Ende deine Bewertung in diesem Format:
-
-BEWERTUNG:
-- Eskalationslevel: X/10
-- Lösungsfortschritt: X/10
-- Kommunikationsqualität {agent_a_name}: X/10
-- Kommunikationsqualität {agent_b_name}: X/10
 """
 
-    # Strip any trailing whitespace from previous messages to avoid API errors
-    cleaned_messages = []
+    # Build transcript for evaluator - convert all to text format
+    transcript_lines = []
     for msg in state["messages"]:
-        content = msg.content.rstrip() if hasattr(msg, 'content') else ""
-        if isinstance(msg, AIMessage):
-            cleaned_messages.append(AIMessage(content=content, name=getattr(msg, 'name', None)))
-        elif isinstance(msg, HumanMessage):
-            cleaned_messages.append(HumanMessage(content=content, name=getattr(msg, 'name', None)))
-        else:
-            cleaned_messages.append(msg)
+        content = msg.content.strip() if hasattr(msg, 'content') else ""
+        if content:
+            transcript_lines.append(content)
 
+    transcript = "\n\n".join(transcript_lines)
+
+    # Simple message format for evaluator - just system + one human message with transcript
     messages = [
         SystemMessage(content=EVALUATOR_PROMPT + context),
-        *cleaned_messages
+        HumanMessage(content=f"Hier ist das Transkript der Mediationssitzung:\n\n{transcript}\n\nBitte gib deine Analyse.")
     ]
 
+    logger.info(f"Evaluator: {len(messages)} Nachrichten, Transcript-Länge: {len(transcript)}")
+
     full_response = ""
-    async for chunk in llm.astream(messages):
-        if chunk.content:
-            full_response += chunk.content
-            yield (chunk.content, False)
+    try:
+        async for chunk in llm.astream(messages):
+            if chunk.content:
+                full_response += chunk.content
+                yield (chunk.content, False)
+    except Exception as e:
+        logger.error(f"Evaluator Streaming-Fehler: {e}")
+        # Try non-streaming fallback
+        try:
+            non_stream_llm = get_agent_llm(streaming=False)
+            response = await non_stream_llm.ainvoke(messages)
+            if response.content:
+                full_response = response.content
+                yield (full_response, False)
+        except Exception as e2:
+            logger.error(f"Evaluator Non-Stream Fehler: {e2}")
+            full_response = f"Fehler bei der Evaluierung: {e2}"
+            yield (full_response, False)
 
     yield (full_response, True)
